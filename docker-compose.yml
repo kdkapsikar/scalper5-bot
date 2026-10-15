@@ -1,0 +1,9 @@
+services:
+  scalp5-bot:
+    build: .
+    restart: unless-stopped        # comes back after crashes and server reboots
+    env_file: .env
+    volumes:
+      - ./.state:/app/.state
+    # Examples:
+    # command: ["python", "-m", "scalpbot.bot", "--source", "yfinance", "--symbol", "^NSEI", "--tz", "Asia/Kolkata"]

@@ -1,0 +1,101 @@
+//@version=5
+// Scalp5 Confluence: SMA 22/33 cross trigger + Supertrend, 200 DEMA, RSI, daily pivot filters.
+// Mirrors scalpbot/strategy.py. Use on a 5-minute chart. Untested on TradingView as of writing:
+// compile it, then compare a few signals against the Python bot before trusting it.
+strategy("Scalp5 Confluence", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=10,
+         commission_type=strategy.commission.percent, commission_value=0.05, slippage=2, calc_on_every_tick=false)
+
+// ---- inputs
+smaFastLen   = input.int(22,  "SMA fast (orange)", group="Trigger")
+smaSlowLen   = input.int(33,  "SMA slow (blue)",   group="Trigger")
+crossLookback= input.int(1,   "Cross lookback (bars)", minval=1, group="Trigger")
+demaLen      = input.int(200, "DEMA length",       group="Filters")
+rsiLen       = input.int(14,  "RSI length",        group="Filters")
+rsiLongLo    = input.float(35.0, "RSI long min",   group="Filters")
+rsiLongHi    = input.float(62.0, "RSI long max",   group="Filters")
+rsiShortLo   = input.float(30.0, "RSI short min",  group="Filters")
+rsiShortHi   = input.float(60.0, "RSI short max",  group="Filters")
+stLen        = input.int(10,  "Supertrend ATR length", group="Filters")
+stMult       = input.float(3.0, "Supertrend multiplier", group="Filters")
+atrLen       = input.int(14,  "ATR length (stop / room)", group="Risk")
+stopAtrMult  = input.float(1.5, "Stop = ATR x", group="Risk")
+minRoomAtr   = input.float(0.5, "Min room to next pivot (ATR x)", group="Risk")
+reqDema      = input.bool(true, "Require 200 DEMA bias",   group="Require")
+reqSt        = input.bool(true, "Require Supertrend",      group="Require")
+reqRsi       = input.bool(true, "Require RSI zone + slope", group="Require")
+reqRoom      = input.bool(true, "Require room to pivot",   group="Require")
+
+// ---- indicators
+smaF = ta.sma(close, smaFastLen)
+smaS = ta.sma(close, smaSlowLen)
+e1   = ta.ema(close, demaLen)
+dema = 2 * e1 - ta.ema(e1, demaLen)
+rsiV = ta.rsi(close, rsiLen)
+atrV = ta.atr(atrLen)
+[stLine, stDir] = ta.supertrend(stMult, stLen)   // Pine: stDir < 0 = uptrend, > 0 = downtrend
+stUp = stDir < 0
+
+// ---- previous-day pivots (exchange day of the symbol)
+[pH, pL, pC] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]], lookahead=barmerge.lookahead_on)
+pp = (pH + pL + pC) / 3
+rg = pH - pL
+levels = array.from(pL - 2 * (pH - pp), pp - rg, 2 * pp - pH, pp, 2 * pp - pL, pp + rg, pH + 2 * (pp - pL))
+float nextUp = na
+float nextDn = na
+for i = 0 to array.size(levels) - 1
+    lv = array.get(levels, i)
+    if lv > close and (na(nextUp) or lv < nextUp)
+        nextUp := lv
+    if lv < close and (na(nextDn) or lv > nextDn)
+        nextDn := lv
+
+// ---- signals
+crossUp = ta.crossover(smaF, smaS)
+crossDn = ta.crossunder(smaF, smaS)
+upRecent = crossLookback > 1 ? (ta.barssince(crossUp) < crossLookback and smaF > smaS) : crossUp
+dnRecent = crossLookback > 1 ? (ta.barssince(crossDn) < crossLookback and smaF < smaS) : crossDn
+
+longRsi  = rsiV >= rsiLongLo  and rsiV <= rsiLongHi  and rsiV > rsiV[1]
+shortRsi = rsiV >= rsiShortLo and rsiV <= rsiShortHi and rsiV < rsiV[1]
+longRoom  = not na(nextUp) and (nextUp - close) >= minRoomAtr * atrV
+shortRoom = not na(nextDn) and (close - nextDn) >= minRoomAtr * atrV
+
+longSig  = upRecent and (not reqSt or stUp)     and (not reqDema or close > dema) and (not reqRsi or longRsi)  and (not reqRoom or longRoom)
+shortSig = dnRecent and (not reqSt or not stUp) and (not reqDema or close < dema) and (not reqRsi or shortRsi) and (not reqRoom or shortRoom)
+
+// ---- trades
+var float lStop = na
+var float lTgt  = na
+var float sStop = na
+var float sTgt  = na
+
+if longSig and strategy.position_size <= 0
+    strategy.entry("Long", strategy.long)
+    lStop := close - stopAtrMult * atrV
+    lTgt  := nextUp
+    alert("LONG " + syminfo.ticker + " 5m  price " + str.tostring(close, format.mintick) + "  stop " + str.tostring(lStop, format.mintick) + "  target " + str.tostring(lTgt, format.mintick), alert.freq_once_per_bar_close)
+
+if shortSig and strategy.position_size >= 0
+    strategy.entry("Short", strategy.short)
+    sStop := close + stopAtrMult * atrV
+    sTgt  := nextDn
+    alert("SHORT " + syminfo.ticker + " 5m  price " + str.tostring(close, format.mintick) + "  stop " + str.tostring(sStop, format.mintick) + "  target " + str.tostring(sTgt, format.mintick), alert.freq_once_per_bar_close)
+
+if strategy.position_size > 0
+    strategy.exit("Exit L", "Long", stop=lStop, limit=lTgt)
+    if not stUp
+        strategy.close("Long", comment="Supertrend flip")
+
+if strategy.position_size < 0
+    strategy.exit("Exit S", "Short", stop=sStop, limit=sTgt)
+    if stUp
+        strategy.close("Short", comment="Supertrend flip")
+
+// ---- plots
+plot(smaF, "SMA 22", color=color.orange, linewidth=2)
+plot(smaS, "SMA 33", color=color.blue, linewidth=2)
+plot(dema, "DEMA 200", color=color.purple, linewidth=2)
+plot(stLine, "Supertrend", color=stUp ? color.green : color.red, style=plot.style_linebr)
+plot(pp, "Pivot P", color=color.gray, style=plot.style_stepline)
+plotshape(longSig,  "Long",  shape.triangleup,   location.belowbar, color.green, size=size.small, text="L")
+plotshape(shortSig, "Short", shape.triangledown, location.abovebar, color.red,   size=size.small, text="S")
