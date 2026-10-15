@@ -4,5 +4,7 @@ ENV PYTHONUNBUFFERED=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY scalpbot ./scalpbot
+COPY scripts ./scripts
+COPY watchlist.yaml .
 VOLUME ["/app/.state"]
 CMD ["python", "-m", "scalpbot.bot"]
