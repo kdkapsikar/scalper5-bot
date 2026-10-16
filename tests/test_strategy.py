@@ -54,7 +54,8 @@ def test_pivot_math():
 
 
 def test_unfiltered_signals_equal_crosses():
-    cfg = StrategyConfig(require_dema_bias=False, require_supertrend=False, require_rsi=False, require_pivot_room=False)
+    cfg = StrategyConfig(require_dema_bias=False, require_supertrend=False, require_rsi=False,
+                         require_pivot_room=False, dema_cross_mode="off")
     d = add_signals(compute(make_df(), cfg), cfg)
     assert d["cross_up"].sum() > 5
     assert d["long_sig"].sum() == d["cross_up"].sum()
@@ -88,6 +89,8 @@ def test_backtest_runs_and_is_consistent():
     assert stats["trades"] == len(trades) > 0
     assert (trades["exit_time"] >= trades["entry_time"]).all()
     assert set(trades["side"]) <= {"LONG", "SHORT"}
+    assert trades["trigger"].isin({"SMA cross", "200 DEMA cross", "SMA + DEMA cross"}).all()
+    assert "by_trigger" in stats
 
 
 def test_closed_only_drops_forming_candle():
@@ -99,3 +102,63 @@ def test_closed_only_drops_forming_candle():
 def test_seconds_to_next_close():
     t = pd.Timestamp("2026-10-15 18:22:30", tz="UTC").timestamp()
     assert seconds_to_next_close(t, 5, 5.0) == pytest.approx(155.0)
+
+
+# --------------------------------------------------------------------------- 200 DEMA cross trigger
+LOOSE = dict(require_dema_bias=False, require_supertrend=False, require_rsi=False, require_pivot_room=False)
+
+
+def _with_lines(fast, slow, dema=100.0, **kw):
+    """Real frame with the SMA / DEMA columns replaced by hand-made lines, then signals."""
+    cfg = StrategyConfig(**LOOSE, **kw)
+    ind = compute(make_df(), cfg)
+    i = np.arange(len(ind))
+    ind["sma_fast"], ind["sma_slow"], ind["dema"] = fast(i), slow(i), dema
+    return add_signals(ind, cfg)
+
+
+def _rows(series):
+    return list(np.flatnonzero(series.to_numpy()))
+
+
+def test_dema_cross_up_long_modes():
+    f = lambda i: np.where(i < 500, 98.0, 103.0)   # 22 crosses up through the DEMA at row 500
+    s = lambda i: np.where(i < 502, 97.0, 101.0)   # 33 follows at row 502 (22 stays above 33: no SMA cross)
+    d = _with_lines(f, s, dema_cross_mode="both")
+    assert _rows(d["long_sig"]) == [502]            # fires when BOTH lines are above
+    assert d["trigger"].iloc[502] == "200 DEMA cross"
+    assert not d["short_sig"].any() and not d["cross_up"].any() and not d["cross_dn"].any()
+    assert _rows(_with_lines(f, s, dema_cross_mode="fast")["long_sig"]) == [500]
+    assert not _with_lines(f, s, dema_cross_mode="off")["long_sig"].any()
+
+
+def test_dema_cross_down_short():
+    f = lambda i: np.where(i < 600, 102.0, 97.0)
+    s = lambda i: np.where(i < 602, 103.0, 98.0)
+    d = _with_lines(f, s, dema_cross_mode="both")
+    assert _rows(d["short_sig"]) == [602]
+    assert d["trigger"].iloc[602] == "200 DEMA cross"
+    assert not d["long_sig"].any()
+    assert _rows(_with_lines(f, s, dema_cross_mode="fast")["short_sig"]) == [600]
+
+
+def test_trigger_label_when_both_fire():
+    f = lambda i: np.where(i < 500, 98.0, 103.0)
+    s = lambda i: np.where(i < 500, 99.0, 101.0)    # 22 crosses 33 AND both cross the DEMA on row 500
+    d = _with_lines(f, s, dema_cross_mode="both")
+    assert _rows(d["long_sig"]) == [500]
+    assert d["trigger"].iloc[500] == "SMA + DEMA cross"
+
+
+def test_conflicting_triggers_cancel():
+    f = lambda i: np.where(i < 700, 101.0, 99.0)
+    s = lambda i: np.where(i < 700, 102.0, 98.0)    # SMA cross up and DEMA cross down on the same candle
+    d = _with_lines(f, s, dema_cross_mode="both")
+    assert d["cross_up"].iloc[700] and d["dema_dn"].iloc[700]
+    assert not d["long_sig"].any() and not d["short_sig"].any()
+
+
+def test_invalid_dema_mode_rejected():
+    cfg = StrategyConfig(dema_cross_mode="sideways")
+    with pytest.raises(ValueError):
+        add_signals(compute(make_df(), StrategyConfig()), cfg)

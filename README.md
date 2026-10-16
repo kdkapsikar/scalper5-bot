@@ -15,6 +15,9 @@
 | 3 | RSI (14) | Zone + slope filter (long: 35-62 and rising, short: 30-60 and falling; tunable) |
 | 4 | Daily pivots (P, R1-R3, S1-S3) | Next level in trade direction = target; needs min room (0.5 ATR) |
 | 5 | Supertrend (10, 3) | Direction filter and trailing exit |
+| 6 | 22/33 lines vs 200 DEMA | **Second trigger**: lines crossing up through the DEMA = long, down through it = short |
+
+The DEMA trigger has three modes (`--dema-cross off|fast|both`, or `dema_cross_mode` in a watchlist entry's `params:`). `fast`: the 22 line crossing the DEMA is the event. `both` (default): either line crossing is the event, but the signal fires only once both lines sit on the new side of the DEMA. The alert and the backtest label each signal's trigger (`SMA cross`, `200 DEMA cross`, or `SMA + DEMA cross`) so you can compare how each performs; the backtest prints a per-trigger win rate. If the two triggers point opposite ways on the same candle, the bot stands aside.
 
 Stop = 1.5 x ATR. Backtester exits: stop, pivot target, Supertrend flip, opposite signal. Every filter can be switched off (`--no-dema`, `--no-supertrend`, `--no-rsi`, `--no-room`), and any instrument can override settings with `params:` in `watchlist.yaml` (gold, crypto and index futures rarely want identical RSI zones).
 

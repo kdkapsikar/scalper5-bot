@@ -22,6 +22,7 @@ def backtest(df: pd.DataFrame, cfg: StrategyConfig, fee_bps: float = 5.0, slippa
     d = add_signals(compute(df, cfg), cfg)
     o, h, l, c = (d[k].to_numpy(float) for k in ("open", "high", "low", "close"))
     st_dir = d["st_dir"].to_numpy()
+    trig = d["trigger"].to_numpy()
     long_sig, short_sig = d["long_sig"].to_numpy(), d["short_sig"].to_numpy()
     arrs = {k: d[k].to_numpy(float) for k in ("long_stop", "long_tp", "short_stop", "short_tp")}
     cost = 2 * (fee_bps + slippage_bps) / 1e4
@@ -32,7 +33,8 @@ def backtest(df: pd.DataFrame, cfg: StrategyConfig, fee_bps: float = 5.0, slippa
         nonlocal pos
         ret = pos["side"] * (price - pos["entry"]) / pos["entry"] - cost
         trades.append({"entry_time": d.index[pos["i"]], "exit_time": d.index[i], "side": "LONG" if pos["side"] == 1 else "SHORT",
-                       "entry": pos["entry"], "exit": price, "ret": ret, "reason": reason, "bars": i - pos["i"]})
+                       "entry": pos["entry"], "exit": price, "ret": ret, "reason": reason, "bars": i - pos["i"],
+                       "trigger": pos["trig"]})
         pos = None
 
     for i in range(1, len(d)):
@@ -41,7 +43,8 @@ def backtest(df: pd.DataFrame, cfg: StrategyConfig, fee_bps: float = 5.0, slippa
         if pos is None and (long_sig[i - 1] or short_sig[i - 1]):
             side = 1 if long_sig[i - 1] else -1
             k = "long" if side == 1 else "short"
-            pos = {"side": side, "entry": o[i], "stop": arrs[f"{k}_stop"][i - 1], "tp": arrs[f"{k}_tp"][i - 1], "i": i}
+            pos = {"side": side, "entry": o[i], "stop": arrs[f"{k}_stop"][i - 1], "tp": arrs[f"{k}_tp"][i - 1], "i": i,
+                   "trig": trig[i - 1]}
         if pos is None:
             continue
         if pos["side"] == 1:
@@ -76,6 +79,8 @@ def summarize(trades: pd.DataFrame) -> dict:
         "total_return_%": round(100 * (equity.iloc[-1] - 1), 2),
         "max_drawdown_%": round(100 * (equity / equity.cummax() - 1).min(), 2),
         "by_exit": trades["reason"].value_counts().to_dict(),
+        "by_trigger": {t: {"trades": int(len(g)), "win_%": round(float(100 * (g["ret"] > 0).mean()), 1),
+                           "avg_%": round(float(100 * g["ret"].mean()), 3)} for t, g in trades.groupby("trigger")},
     }
 
 
@@ -89,6 +94,8 @@ def main(argv=None) -> None:
     p.add_argument("--tz", default=None)
     p.add_argument("--fee-bps", type=float, default=5.0, help="per side")
     p.add_argument("--slippage-bps", type=float, default=2.0, help="per side")
+    p.add_argument("--dema-cross", choices=["off", "fast", "both"], default="both",
+                   help="200 DEMA cross trigger mode")
     p.add_argument("--out", default="trades.csv")
     a = p.parse_args(argv)
 
@@ -98,7 +105,8 @@ def main(argv=None) -> None:
         df = fetch_binance_history(a.symbol, a.days, futures=a.futures)
     else:
         df = fetch_yfinance(a.symbol, period=f"{min(a.days, 59)}d")
-    cfg = StrategyConfig(tz=a.tz or ("Asia/Kolkata" if a.source == "yfinance" and not a.csv else "UTC"))
+    cfg = StrategyConfig(tz=a.tz or ("Asia/Kolkata" if a.source == "yfinance" and not a.csv else "UTC"),
+                         dema_cross_mode=a.dema_cross)
     trades = backtest(df, cfg, a.fee_bps, a.slippage_bps)
     print(f"Candles: {len(df)}  ({df.index[0]} -> {df.index[-1]})")
     for k, v in summarize(trades).items():

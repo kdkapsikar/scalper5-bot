@@ -1,6 +1,7 @@
 """Five-indicator confluence strategy for 5-minute scalping.
 
-Trigger : SMA 22 crosses SMA 33.
+Triggers: (a) SMA 22 crosses SMA 33; (b) the 22/33 lines cross the 200 DEMA (see dema_cross_mode).
+          Opposite triggers on the same candle cancel each other out.
 Filters : Supertrend direction, 200 DEMA bias, RSI zone + direction, room to next pivot level.
 Targets : next daily pivot level (P / R1-R3 / S1-S3) in the trade direction.
 Stop    : ATR based (the backtester also trails with Supertrend).
@@ -37,6 +38,12 @@ class StrategyConfig:
     min_room_atr: float = 0.5      # next pivot must be at least this many ATRs away
     stop_atr_mult: float = 1.5
     cross_lookback: int = 1        # accept a cross that happened within the last N candles
+    # Second trigger: the SMA lines crossing the 200 DEMA.
+    #   "off"  : disabled
+    #   "fast" : the fast SMA (22) crossing the DEMA is the event
+    #   "both" : either line crossing is the event, but only once BOTH lines sit on the new side of the DEMA
+    dema_cross_mode: str = "both"
+    dema_cross_lookback: int = 1   # accept a DEMA cross within the last N candles
     tz: str = "UTC"                # timezone that defines the "day" for pivot levels
 
 
@@ -141,6 +148,14 @@ def compute(df: pd.DataFrame, cfg: StrategyConfig) -> pd.DataFrame:
     return d.join(daily_pivots(d, cfg.tz))
 
 
+def _recent(s: pd.Series, n: int) -> pd.Series:
+    """True if `s` was True on any of the last n candles (including this one)."""
+    return s.astype(float).rolling(n, min_periods=1).max() > 0
+
+
+DEMA_MODES = ("off", "fast", "both")
+
+
 def add_signals(ind: pd.DataFrame, cfg: StrategyConfig) -> pd.DataFrame:
     """Add boolean long_sig / short_sig plus stop and target columns."""
     d = ind.copy()
@@ -153,6 +168,43 @@ def add_signals(ind: pd.DataFrame, cfg: StrategyConfig) -> pd.DataFrame:
         cross_up = (cross_up.astype(float).rolling(lb, min_periods=1).max() > 0) & (f > s)
         cross_dn = (cross_dn.astype(float).rolling(lb, min_periods=1).max() > 0) & (f < s)
     d["cross_up"], d["cross_dn"] = cross_up, cross_dn
+
+    # ---- second trigger: 22/33 lines crossing the 200 DEMA (green = up through it, red = down through it)
+    if cfg.dema_cross_mode not in DEMA_MODES:
+        raise ValueError(f"dema_cross_mode must be one of {DEMA_MODES}, got {cfg.dema_cross_mode!r}")
+    dm = d["dema"]
+    if cfg.dema_cross_mode == "off":
+        dema_up = dema_dn = pd.Series(False, index=d.index)
+    else:
+        f_up = (f > dm) & (f.shift(1) <= dm.shift(1))
+        f_dn = (f < dm) & (f.shift(1) >= dm.shift(1))
+        if cfg.dema_cross_mode == "fast":
+            ev_up, ev_dn = f_up, f_dn
+            state_up, state_dn = f > dm, f < dm
+        else:
+            s_up = (s > dm) & (s.shift(1) <= dm.shift(1))
+            s_dn = (s < dm) & (s.shift(1) >= dm.shift(1))
+            ev_up, ev_dn = f_up | s_up, f_dn | s_dn
+            state_up, state_dn = (f > dm) & (s > dm), (f < dm) & (s < dm)
+        n2 = max(1, cfg.dema_cross_lookback)
+        if n2 > 1:
+            ev_up, ev_dn = _recent(ev_up, n2), _recent(ev_dn, n2)
+        dema_up, dema_dn = ev_up & state_up, ev_dn & state_dn
+    d["dema_up"], d["dema_dn"] = dema_up, dema_dn
+
+    raw_long, raw_short = cross_up | dema_up, cross_dn | dema_dn
+    conflict = raw_long & raw_short            # opposite triggers on one candle: stand aside
+    raw_long, raw_short = raw_long & ~conflict, raw_short & ~conflict
+    d["trigger"] = np.select(
+        [raw_long.to_numpy() & cross_up.to_numpy() & dema_up.to_numpy(),
+         raw_long.to_numpy() & dema_up.to_numpy(),
+         raw_long.to_numpy() & cross_up.to_numpy(),
+         raw_short.to_numpy() & cross_dn.to_numpy() & dema_dn.to_numpy(),
+         raw_short.to_numpy() & dema_dn.to_numpy(),
+         raw_short.to_numpy() & cross_dn.to_numpy()],
+        ["SMA + DEMA cross", "200 DEMA cross", "SMA cross"] * 2,
+        default="",
+    )
 
     # nearest pivot level above / below price
     lv = d[PIVOT_COLS].to_numpy(float)
@@ -182,8 +234,8 @@ def add_signals(ind: pd.DataFrame, cfg: StrategyConfig) -> pd.DataFrame:
         out = out & (d[f"{side}_room"] | (not cfg.require_pivot_room))
         return out
 
-    d["long_sig"] = gate(cross_up, "l")
-    d["short_sig"] = gate(cross_dn, "s")
+    d["long_sig"] = gate(raw_long, "l")
+    d["short_sig"] = gate(raw_short, "s")
     d["long_stop"] = close - cfg.stop_atr_mult * d["atr"]
     d["short_stop"] = close + cfg.stop_atr_mult * d["atr"]
     d["long_tp"], d["short_tp"] = d["next_up"], d["next_dn"]
@@ -202,6 +254,7 @@ class Signal:
     atr: float
     above_dema: bool
     st_up: bool
+    trigger: str = ""
 
 
 def latest_signal(d: pd.DataFrame) -> Optional[Signal]:
@@ -223,6 +276,7 @@ def latest_signal(d: pd.DataFrame) -> Optional[Signal]:
         atr=float(r["atr"]),
         above_dema=bool(r["close"] > r["dema"]),
         st_up=bool(r["st_dir"] == 1),
+        trigger=str(r["trigger"]),
     )
 
 

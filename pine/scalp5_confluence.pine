@@ -9,6 +9,8 @@ strategy("Scalp5 Confluence", overlay=true, default_qty_type=strategy.percent_of
 smaFastLen   = input.int(22,  "SMA fast (orange)", group="Trigger")
 smaSlowLen   = input.int(33,  "SMA slow (blue)",   group="Trigger")
 crossLookback= input.int(1,   "Cross lookback (bars)", minval=1, group="Trigger")
+demaMode     = input.string("both", "200 DEMA cross trigger (off / fast = 22 only / both lines)", options=["off", "fast", "both"], group="Trigger")
+demaLookback = input.int(1,   "DEMA cross lookback (bars)", minval=1, group="Trigger")
 demaLen      = input.int(200, "DEMA length",       group="Filters")
 rsiLen       = input.int(14,  "RSI length",        group="Filters")
 rsiLongLo    = input.float(35.0, "RSI long min",   group="Filters")
@@ -52,16 +54,38 @@ for i = 0 to array.size(levels) - 1
 // ---- signals
 crossUp = ta.crossover(smaF, smaS)
 crossDn = ta.crossunder(smaF, smaS)
-upRecent = crossLookback > 1 ? (ta.barssince(crossUp) < crossLookback and smaF > smaS) : crossUp
-dnRecent = crossLookback > 1 ? (ta.barssince(crossDn) < crossLookback and smaF < smaS) : crossDn
+bsUp = ta.barssince(crossUp)
+bsDn = ta.barssince(crossDn)
+upRecent = crossLookback > 1 ? (bsUp < crossLookback and smaF > smaS) : crossUp
+dnRecent = crossLookback > 1 ? (bsDn < crossLookback and smaF < smaS) : crossDn
+
+// second trigger: the 22/33 lines crossing the 200 DEMA
+fU = ta.crossover(smaF, dema)
+fD = ta.crossunder(smaF, dema)
+sU = ta.crossover(smaS, dema)
+sD = ta.crossunder(smaS, dema)
+evUp = demaMode == "fast" ? fU : (fU or sU)
+evDn = demaMode == "fast" ? fD : (fD or sD)
+bsEvUp = ta.barssince(evUp)
+bsEvDn = ta.barssince(evDn)
+evUpRecent = demaLookback > 1 ? bsEvUp < demaLookback : evUp
+evDnRecent = demaLookback > 1 ? bsEvDn < demaLookback : evDn
+bothAbove = demaMode == "fast" ? smaF > dema : (smaF > dema and smaS > dema)
+bothBelow = demaMode == "fast" ? smaF < dema : (smaF < dema and smaS < dema)
+demaUp = demaMode != "off" and evUpRecent and bothAbove
+demaDn = demaMode != "off" and evDnRecent and bothBelow
+
+rawLong  = upRecent or demaUp
+rawShort = dnRecent or demaDn
+conflict = rawLong and rawShort   // opposite triggers on the same bar cancel out
 
 longRsi  = rsiV >= rsiLongLo  and rsiV <= rsiLongHi  and rsiV > rsiV[1]
 shortRsi = rsiV >= rsiShortLo and rsiV <= rsiShortHi and rsiV < rsiV[1]
 longRoom  = not na(nextUp) and (nextUp - close) >= minRoomAtr * atrV
 shortRoom = not na(nextDn) and (close - nextDn) >= minRoomAtr * atrV
 
-longSig  = upRecent and (not reqSt or stUp)     and (not reqDema or close > dema) and (not reqRsi or longRsi)  and (not reqRoom or longRoom)
-shortSig = dnRecent and (not reqSt or not stUp) and (not reqDema or close < dema) and (not reqRsi or shortRsi) and (not reqRoom or shortRoom)
+longSig  = rawLong and not conflict and (not reqSt or stUp)     and (not reqDema or close > dema) and (not reqRsi or longRsi)  and (not reqRoom or longRoom)
+shortSig = rawShort and not conflict and (not reqSt or not stUp) and (not reqDema or close < dema) and (not reqRsi or shortRsi) and (not reqRoom or shortRoom)
 
 // ---- trades
 var float lStop = na

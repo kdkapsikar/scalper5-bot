@@ -102,7 +102,7 @@ def format_signal(name: str, sig: Signal) -> str:
     return (
         f"{icon}  {name}  5m\n"
         f"Candle close: {close_time:%Y-%m-%d %H:%M} IST\n"
-        f"Price: {fmt(sig.price)}\n"
+        f"Price: {fmt(sig.price)}   Trigger: {sig.trigger}\n"
         f"Stop: {fmt(sig.stop)}   Target (next pivot): {tgt}\n"
         f"RSI {sig.rsi:.1f} | Supertrend {'up' if sig.st_up else 'down'} | "
         f"{'above' if sig.above_dema else 'below'} 200 DEMA\n"
@@ -122,6 +122,8 @@ def flags_from(args: argparse.Namespace) -> dict:
         f["require_pivot_room"] = False
     if args.cross_lookback != 1:
         f["cross_lookback"] = args.cross_lookback
+    if args.dema_cross:
+        f["dema_cross_mode"] = args.dema_cross
     return f
 
 
@@ -210,6 +212,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--delay", type=float, default=5.0, help="seconds to wait after candle close before fetching")
     p.add_argument("--cooldown", type=int, default=6, help="min candles between same-side alerts per instrument")
     p.add_argument("--cross-lookback", type=int, default=1)
+    p.add_argument("--dema-cross", choices=["off", "fast", "both"],
+                   help="200 DEMA cross trigger: off, fast (22 only) or both lines (default both)")
     p.add_argument("--no-dema", action="store_true", help="don't require 200 DEMA bias")
     p.add_argument("--no-supertrend", action="store_true")
     p.add_argument("--no-rsi", action="store_true")
