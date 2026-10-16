@@ -195,6 +195,7 @@ def add_signals(ind: pd.DataFrame, cfg: StrategyConfig) -> pd.DataFrame:
     raw_long, raw_short = cross_up | dema_up, cross_dn | dema_dn
     conflict = raw_long & raw_short            # opposite triggers on one candle: stand aside
     raw_long, raw_short = raw_long & ~conflict, raw_short & ~conflict
+    d["raw_long"], d["raw_short"] = raw_long, raw_short   # trigger fired, before the filters
     d["trigger"] = np.select(
         [raw_long.to_numpy() & cross_up.to_numpy() & dema_up.to_numpy(),
          raw_long.to_numpy() & dema_up.to_numpy(),

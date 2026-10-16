@@ -1,33 +1,26 @@
-# Instruments the bot checks at every 5-minute candle close.
-# source: upstox | coinswitch | binance | yfinance
+# What the scanner app and the alert bot watch.
 #
-# Upstox entries (stocks, indices, commodities):
-#   instrument_key: "NSE_INDEX|Nifty 50"          use a key directly, or
-#   segment: NSE_EQ, symbol: RELIANCE             look it up in Upstox's instrument file, or
-#   segment: MCX_FO, underlying: GOLDM            nearest unexpired future (re-resolved daily, so it rolls)
-# CoinSwitch entries (USDT-margined futures, exchange EXCHANGE_2):
-#   symbol: BTCUSDT
-# Any entry can carry `params:` to override strategy settings for that instrument only
-# (see StrategyConfig in scalpbot/strategy.py), e.g. a different RSI zone for gold.
+# universe: built automatically
+#   index_futures  NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY, NIFTYNXT50 futures (Upstox, nearest expiry)
+#   stock_futures  every NSE F&O stock future (Upstox, nearest expiry). The Upstox instrument list is
+#                  downloaded once a day, so contracts roll to the next expiry on their own.
+#   crypto         CoinSwitch PRO futures symbols (BTC, ETH, PAXG, XAUUSDT). Run
+#                  `python -m scalpbot.check` once to confirm each symbol exists on CoinSwitch.
+#   mcx            optional MCX commodity futures by underlying, e.g. [GOLDM, SILVERM, CRUDEOIL]
+#   roll_days      move to next month's contract this many days before expiry (0 = nearest expiry)
+#   only / exclude limit or skip stock futures by underlying name, e.g. only: [RELIANCE, TCS, SBIN]
 #
-# Check names/keys with:  python -m scalpbot.check
+# instruments: extra hand-picked entries (optional), for example
+#   - {name: "GOLD MINI", source: upstox, segment: MCX_FO, underlying: GOLDM}
+#   - {name: "SBIN", source: upstox, instrument_key: "NSE_EQ|INE062A01020", params: {rsi_long: [40, 65]}}
 
-instruments:
-  # ---- Indian indices
-  - {name: "NIFTY 50",   source: upstox, instrument_key: "NSE_INDEX|Nifty 50"}
-  - {name: "BANK NIFTY", source: upstox, instrument_key: "NSE_INDEX|Nifty Bank"}
+universe:
+  index_futures: true
+  stock_futures: true
+  mcx: []
+  crypto: [BTCUSDT, ETHUSDT, PAXGUSDT, XAUUSDT]
+  roll_days: 0
+  only: []
+  exclude: []
 
-  # ---- Indian stocks (edit freely)
-  - {name: "RELIANCE", source: upstox, segment: NSE_EQ, symbol: RELIANCE}
-  - {name: "HDFCBANK", source: upstox, segment: NSE_EQ, symbol: HDFCBANK}
-  - {name: "TCS",      source: upstox, segment: NSE_EQ, symbol: TCS}
-
-  # ---- MCX commodities (nearest-expiry futures)
-  - {name: "GOLD MINI",    source: upstox, segment: MCX_FO, underlying: GOLDM}
-  - {name: "SILVER MINI",  source: upstox, segment: MCX_FO, underlying: SILVERM}
-  - {name: "CRUDE OIL",    source: upstox, segment: MCX_FO, underlying: CRUDEOIL}
-
-  # ---- Crypto on CoinSwitch PRO futures
-  - {name: "BTC",  source: coinswitch, symbol: BTCUSDT}
-  - {name: "ETH",  source: coinswitch, symbol: ETHUSDT}
-  - {name: "PAXG", source: coinswitch, symbol: PAXGUSDT}  # tokenised gold: confirm it is listed on EXCHANGE_2
+instruments: []

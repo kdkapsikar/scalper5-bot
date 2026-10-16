@@ -25,6 +25,7 @@ class Instrument:
     underlying: str = ""      # Upstox MCX futures: GOLDM, SILVERM, CRUDEOIL, ...
     tz: str = ""              # override the pivot "day" timezone
     params: dict = field(default_factory=dict)  # StrategyConfig overrides for this instrument
+    group: str = ""           # "Index futures", "Stock futures", "MCX futures", "Crypto" or "Custom"
 
     def validate(self) -> None:
         if self.source not in SOURCES:
@@ -41,20 +42,51 @@ class Instrument:
 
 def load_watchlist(path: str) -> list[Instrument]:
     data = yaml.safe_load(Path(path).read_text()) or {}
-    raw = data.get("instruments")
-    if not raw:
-        raise ValueError(f"{path}: no 'instruments' list found")
+    raw = data.get("instruments") or []
+    if not raw and "universe" not in data:
+        raise ValueError(f"{path}: needs an 'instruments' list or a 'universe' section")
     out, seen = [], set()
     for i, item in enumerate(raw, 1):
         if "name" not in item or "source" not in item:
             raise ValueError(f"{path}: instrument #{i} needs 'name' and 'source'")
         inst = Instrument(**item)
         inst.validate()
+        inst.group = inst.group or "Custom"
         if inst.name in seen:
             raise ValueError(f"{path}: duplicate instrument name '{inst.name}'")
         seen.add(inst.name)
         out.append(inst)
     return out
+
+
+UNIVERSE_DEFAULTS = {
+    "index_futures": True,      # NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY, NIFTYNXT50 (nearest expiry)
+    "stock_futures": True,      # every NSE F&O stock (nearest expiry)
+    "mcx": [],                  # MCX underlyings to add, e.g. [GOLDM, SILVERM, CRUDEOIL]
+    "crypto": ["BTCUSDT", "ETHUSDT", "PAXGUSDT", "XAUUSDT"],   # CoinSwitch PRO futures symbols
+    "roll_days": 0,             # switch to next month this many days before expiry (0 = nearest expiry)
+    "only": [],                 # restrict stock futures to these underlyings (empty = all)
+    "exclude": [],              # underlyings to skip
+}
+
+
+def load_universe_config(path: str) -> dict | None:
+    """The `universe:` section of the watchlist with defaults filled in, or None if the file has none."""
+    data = yaml.safe_load(Path(path).read_text()) or {}
+    if "universe" not in data:
+        return None
+    u = data["universe"] or {}
+    if not isinstance(u, dict):
+        raise ValueError(f"{path}: 'universe' must be a mapping")
+    unknown = set(u) - set(UNIVERSE_DEFAULTS)
+    if unknown:
+        raise ValueError(f"{path}: unknown universe option(s) {sorted(unknown)}; allowed: {sorted(UNIVERSE_DEFAULTS)}")
+    conf = {**UNIVERSE_DEFAULTS, **u}
+    for k in ("mcx", "crypto", "only", "exclude"):
+        conf[k] = [str(x).strip() for x in (conf[k] or []) if str(x).strip()]
+    conf["roll_days"] = int(conf["roll_days"] or 0)
+    conf["index_futures"], conf["stock_futures"] = bool(conf["index_futures"]), bool(conf["stock_futures"])
+    return conf
 
 
 def make_config(inst: Instrument, flags: dict | None = None) -> StrategyConfig:

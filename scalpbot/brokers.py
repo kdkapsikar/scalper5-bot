@@ -15,6 +15,7 @@ import gzip
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from urllib.parse import quote, unquote_plus, urlencode
@@ -80,6 +81,45 @@ def _parse_upstox(rows: list) -> pd.DataFrame:
     return out.sort_index()
 
 
+_UP_HIST: dict[str, tuple[str, pd.DataFrame]] = {}   # instrument_key -> (date fetched, history frame)
+_up_lock = threading.Lock()
+_up_last = [0.0]
+
+
+def clear_candle_caches() -> None:
+    _UP_HIST.clear()
+    _CS_CACHE.clear()
+
+
+def _upstox_throttle() -> None:
+    """One global limiter for all threads (UPSTOX_MAX_RPS requests per second, default 5)."""
+    gap = 1.0 / max(0.1, float(os.getenv("UPSTOX_MAX_RPS", "5")))
+    with _up_lock:
+        wait = _up_last[0] + gap - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _up_last[0] = time.monotonic()
+
+
+def _upstox_get(url: str, headers: dict, timeout: int, key: str, tolerate_400: bool = False) -> list:
+    r = None
+    for attempt in range(4):
+        _upstox_throttle()
+        r = requests.get(url, headers=headers, timeout=timeout)
+        if r.status_code == 429 and attempt < 3:   # rate limited: back off and retry
+            time.sleep(1.5 * (attempt + 1))
+            continue
+        break
+    if r.status_code in (401, 403):
+        raise AuthExpired(f"Upstox rejected the token (HTTP {r.status_code}): {r.text[:160]}")
+    if not r.ok:
+        if tolerate_400 and r.status_code == 400:   # intraday has nothing on holidays / before the open
+            log.warning("Upstox intraday returned 400 for %s: %s", key, r.text[:120])
+            return []
+        raise RuntimeError(f"Upstox HTTP {r.status_code} for {key}: {r.text[:200]}")
+    return (r.json().get("data") or {}).get("candles") or []
+
+
 def fetch_upstox(instrument_key: str, days: int = 20, timeout: int = 20) -> pd.DataFrame:
     """5-minute candles: ~`days` calendar days of history plus today's intraday candles."""
     token = upstox_token()
@@ -88,22 +128,16 @@ def fetch_upstox(instrument_key: str, days: int = 20, timeout: int = 20) -> pd.D
     headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
     enc = quote(instrument_key, safe="")
     today = dt.datetime.now(IST).date()
-    urls = [
-        f"{UPSTOX_BASE}/v3/historical-candle/{enc}/minutes/5/{today}/{today - dt.timedelta(days=days)}",
-        f"{UPSTOX_BASE}/v3/historical-candle/intraday/{enc}/minutes/5",
-    ]
-    frames = []
-    for n, url in enumerate(urls):
-        r = requests.get(url, headers=headers, timeout=timeout)
-        if r.status_code in (401, 403):
-            raise AuthExpired(f"Upstox rejected the token (HTTP {r.status_code}): {r.text[:160]}")
-        if not r.ok:
-            if n == 1 and r.status_code == 400:  # intraday has nothing on holidays / before the open
-                log.warning("Upstox intraday returned 400 for %s: %s", instrument_key, r.text[:120])
-                continue
-            raise RuntimeError(f"Upstox HTTP {r.status_code} for {instrument_key}: {r.text[:200]}")
-        frames.append(_parse_upstox((r.json().get("data") or {}).get("candles") or []))
-    return _merge(*frames)
+    hist_url = f"{UPSTOX_BASE}/v3/historical-candle/{enc}/minutes/5/{today}/{today - dt.timedelta(days=days)}"
+    intra_url = f"{UPSTOX_BASE}/v3/historical-candle/intraday/{enc}/minutes/5"
+    cached = _UP_HIST.get(instrument_key)
+    if cached and cached[0] == today.isoformat():
+        hist = cached[1]          # history does not change within the day: only today's candles are re-fetched
+    else:
+        hist = _parse_upstox(_upstox_get(hist_url, headers, timeout, instrument_key))
+        _UP_HIST[instrument_key] = (today.isoformat(), hist)
+    intra = _parse_upstox(_upstox_get(intra_url, headers, timeout, instrument_key, tolerate_400=True))
+    return _merge(hist, intra)
 
 
 def _to_ms(v) -> float:
@@ -181,12 +215,16 @@ def _cs_base() -> str:
     return os.getenv("COINSWITCH_BASE_URL", "https://coinswitch.co")
 
 
+_cs_lock = threading.Lock()
+
+
 def _cs_throttle(min_gap: float = 2.1) -> None:
-    """CoinSwitch klines allow 30 requests / 60 s."""
-    wait = _cs_last_call[0] + min_gap - time.monotonic()
-    if wait > 0:
-        time.sleep(wait)
-    _cs_last_call[0] = time.monotonic()
+    """CoinSwitch klines allow 30 requests / 60 s (shared by all threads)."""
+    with _cs_lock:
+        wait = _cs_last_call[0] + min_gap - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _cs_last_call[0] = time.monotonic()
 
 
 def _cs_headers(method: str, path_with_query: str) -> tuple[dict, str]:

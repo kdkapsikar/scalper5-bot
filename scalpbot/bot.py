@@ -1,9 +1,10 @@
-"""Live signal bot: wakes at every 5-minute candle close, checks every watchlist instrument, alerts on signals.
+"""Live signal bot: wakes at every 5-minute candle close, checks every instrument, alerts on signals.
 
-    python -m scalpbot.bot                       # uses watchlist.yaml
-    python -m scalpbot.bot --only "NIFTY 50,BTC" # subset
-    python -m scalpbot.bot --source binance --symbol BTCUSDT   # quick single instrument
-    python -m scalpbot.bot --once --dry-run      # one pass, console only
+    python -m scalpbot.bot                              # whole universe from watchlist.yaml
+    python -m scalpbot.bot --groups "Index futures,Crypto"
+    python -m scalpbot.bot --only "NIFTY FUT,BTCUSDT"
+    python -m scalpbot.bot --source binance --symbol BTCUSDT   # quick single instrument, no broker keys
+    python -m scalpbot.bot --once --dry-run             # one pass, console only
 
 The bot is ALERT-ONLY: it never places orders.
 """
@@ -16,6 +17,8 @@ import os
 import signal as os_signal
 import threading
 import time
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
@@ -23,13 +26,15 @@ import requests
 
 from .brokers import AuthExpired, clear_instrument_cache
 from .strategy import Signal, add_signals, compute, fmt, latest_signal, status_line
-from .watchlist import SOURCES, Instrument, fetch_candles, load_watchlist, make_config
+from .universe import build_universe
+from .watchlist import SOURCES, Instrument, fetch_candles, make_config
 
 log = logging.getLogger("scalpbot")
 CANDLE_MIN = 5
 DISPLAY_TZ = "Asia/Kolkata"
 STALE_AFTER_MIN = 12   # last closed candle older than this => market closed / feed stalled
 FAILS_BEFORE_ALERT = 3
+MAX_DETAILED_ALERTS = 6  # more signals than this on one candle are sent as a single digest
 
 
 # --------------------------------------------------------------------------- helpers
@@ -110,6 +115,29 @@ def format_signal(name: str, sig: Signal) -> str:
     )
 
 
+def short_line(name: str, sig: Signal) -> str:
+    icon = "🟢" if sig.side == "LONG" else "🔴"
+    return f"{icon} {name} {sig.side} @ {fmt(sig.price)} (stop {fmt(sig.stop)}) [{sig.trigger}]"
+
+
+def flush_alerts(pending: list, notifier) -> None:
+    """Send this candle's signals: individually when few, as one digest when many (e.g. a volatile open)."""
+    if not pending:
+        return
+    if len(pending) <= MAX_DETAILED_ALERTS:
+        for full, _ in pending:
+            notifier.send(full)
+        return
+    chunk, size = [f"📊 {len(pending)} signals on this candle (alert only):"], 0
+    for _, short in pending:
+        if size + len(short) > 3500:
+            notifier.send("\n".join(chunk))
+            chunk, size = [], 0
+        chunk.append(short)
+        size += len(short) + 1
+    notifier.send("\n".join(chunk))
+
+
 def flags_from(args: argparse.Namespace) -> dict:
     f: dict = {}
     if args.no_dema:
@@ -144,59 +172,76 @@ def fetch_fresh(inst: Instrument, n: int) -> pd.DataFrame:
     return df
 
 
-# --------------------------------------------------------------------------- one instrument, one cycle
-def run_instrument(inst: Instrument, args, flags: dict, state: State, notifier: Notifier) -> str:
-    cfg = make_config(inst, flags)
-    df = fetch_fresh(inst, args.candles)
-    age_min = (pd.Timestamp.now(tz="UTC") - (df.index[-1] + pd.Timedelta(minutes=CANDLE_MIN))).total_seconds() / 60
-    ind = add_signals(compute(df, cfg), cfg)
-    log.info("%-16s %s", inst.name, status_line(ind))
+# --------------------------------------------------------------------------- one cycle
+def _evaluate(inst: Instrument, args, flags: dict, auth_failed: dict):
+    """Fetch + compute for one instrument. Runs in a worker thread; has no side effects besides auth_failed."""
+    if inst.source in auth_failed:
+        raise AuthExpired(auth_failed[inst.source])
+    try:
+        cfg = make_config(inst, flags)
+        df = fetch_fresh(inst, args.candles)
+        age_min = (pd.Timestamp.now(tz="UTC") - (df.index[-1] + pd.Timedelta(minutes=CANDLE_MIN))).total_seconds() / 60
+        return add_signals(compute(df, cfg), cfg), age_min
+    except AuthExpired as e:
+        auth_failed.setdefault(inst.source, str(e))
+        raise
+
+
+def _handle(inst: Instrument, ind: pd.DataFrame, age_min: float, args, state: State, pending: list) -> str:
+    chatty = getattr(args, "verbose_status", True)
+    (log.info if chatty else log.debug)("%-18s %s", inst.name, status_line(ind))
     if age_min > STALE_AFTER_MIN:
-        log.info("%-16s last closed candle is %.0f min old: market closed or feed stalled, skipping", inst.name, age_min)
+        (log.info if chatty else log.debug)("%-18s last closed candle is %.0f min old: market closed or feed stalled",
+                                            inst.name, age_min)
         return "stale"
     sig = latest_signal(ind)
     if sig is None:
         return "none"
     if state.is_duplicate(inst.name, sig, args.cooldown):
-        log.info("%-16s %s suppressed (duplicate / cooldown)", inst.name, sig.side)
+        log.info("%-18s %s suppressed (duplicate / cooldown)", inst.name, sig.side)
         return "duplicate"
-    notifier.send(format_signal(inst.name, sig))
+    pending.append((format_signal(inst.name, sig), short_line(inst.name, sig)))
     state.record(inst.name, sig)
     return "alert"
 
 
-def run_all(insts: list[Instrument], args, flags: dict, state: State, notifier: Notifier, health: Health) -> dict:
-    """One pass over the watchlist. A failing instrument never blocks the others."""
+def run_all(insts: list[Instrument], args, flags: dict, state: State, notifier, health: Health) -> dict:
+    """One pass over the universe. Fetching runs in parallel; a failing instrument never blocks the others."""
     results: dict[str, str] = {}
-    auth_failed: set[str] = set()
-    for inst in insts:
-        if inst.source in auth_failed:
-            results[inst.name] = "FAIL"
-            continue
-        try:
-            results[inst.name] = run_instrument(inst, args, flags, state, notifier)
-            health.fails[inst.name] = 0
-            health.auth_alerted.discard(inst.source)
-            if inst.name in health.alerted:
-                health.alerted.discard(inst.name)
-                notifier.send(f"✅ {inst.name}: data feed recovered.")
-        except AuthExpired as e:
-            auth_failed.add(inst.source)
-            results[inst.name] = "FAIL"
-            log.error("%s: %s login/token problem: %s", inst.name, inst.source, e)
-            if inst.source not in health.auth_alerted:
-                health.auth_alerted.add(inst.source)
-                hint = " Run scripts/upstox_token.py to log in again." if inst.source == "upstox" else ""
-                notifier.send(f"🔑 scalp5-bot: {inst.source} rejected our credentials ({e}).{hint}")
-        except Exception as e:
-            n = health.fails.get(inst.name, 0) + 1
-            health.fails[inst.name] = n
-            results[inst.name] = "FAIL"
-            log.exception("%s: cycle failed (%d in a row): %s", inst.name, n, e)
-            if n >= FAILS_BEFORE_ALERT and inst.name not in health.alerted:
-                health.alerted.add(inst.name)
-                notifier.send(f"⚠️ scalp5-bot: {inst.name} failed {n} checks in a row: {e}")
+    auth_failed: dict[str, str] = {}
+    pending: list = []
+    workers = max(1, min(getattr(args, "workers", 4), len(insts) or 1))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {inst.name: ex.submit(_evaluate, inst, args, flags, auth_failed) for inst in insts}
+        for inst in insts:
+            try:
+                ind, age_min = futs[inst.name].result()
+                results[inst.name] = _handle(inst, ind, age_min, args, state, pending)
+                health.fails[inst.name] = 0
+                health.auth_alerted.discard(inst.source)
+                if inst.name in health.alerted:
+                    health.alerted.discard(inst.name)
+                    notifier.send(f"✅ {inst.name}: data feed recovered.")
+            except AuthExpired as e:
+                results[inst.name] = "FAIL"
+                log.error("%s: %s login/token problem: %s", inst.name, inst.source, e)
+                if inst.source not in health.auth_alerted:
+                    health.auth_alerted.add(inst.source)
+                    hint = " Run scripts/upstox_token.py to log in again." if inst.source == "upstox" else ""
+                    notifier.send(f"🔑 scalp5-bot: {inst.source} rejected our credentials ({e}).{hint}")
+            except Exception as e:
+                n = health.fails.get(inst.name, 0) + 1
+                health.fails[inst.name] = n
+                results[inst.name] = "FAIL"
+                log.exception("%s: cycle failed (%d in a row): %s", inst.name, n, e)
+                if n >= FAILS_BEFORE_ALERT and inst.name not in health.alerted:
+                    health.alerted.add(inst.name)
+                    notifier.send(f"⚠️ scalp5-bot: {inst.name} failed {n} checks in a row: {e}")
+    flush_alerts(pending, notifier)
     clear_instrument_cache()
+    c = Counter(results.values())
+    log.info("Cycle done: %d instruments, %d new signals, %d stale/closed, %d failed",
+             len(results), c["alert"], c["stale"], c["FAIL"])
     return results
 
 
@@ -205,10 +250,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     env = os.getenv
     p = argparse.ArgumentParser(description="5-minute confluence scalping signal bot (alert only)")
     p.add_argument("--watchlist", default=env("SCALP_WATCHLIST", "watchlist.yaml"))
-    p.add_argument("--only", help="comma-separated instrument names from the watchlist")
+    p.add_argument("--groups", help='comma-separated subset, e.g. "Index futures,Stock futures,Crypto"')
+    p.add_argument("--only", help="comma-separated instrument names from the universe, e.g. 'NIFTY FUT,BTCUSDT'")
     p.add_argument("--source", choices=sorted(SOURCES), help="quick single instrument (with --symbol)")
     p.add_argument("--symbol", help="symbol for --source, e.g. BTCUSDT or ^NSEI")
     p.add_argument("--candles", type=int, default=1000, help="history length used for indicators")
+    p.add_argument("--workers", type=int, default=4, help="parallel fetches per cycle")
     p.add_argument("--delay", type=float, default=5.0, help="seconds to wait after candle close before fetching")
     p.add_argument("--cooldown", type=int, default=6, help="min candles between same-side alerts per instrument")
     p.add_argument("--cross-lookback", type=int, default=1)
@@ -228,14 +275,21 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 def build_instruments(args) -> list[Instrument]:
     if args.symbol:
-        return [Instrument(name=args.symbol, source=args.source or "binance", symbol=args.symbol)]
-    insts = load_watchlist(args.watchlist)
+        return [Instrument(name=args.symbol, source=args.source or "binance", symbol=args.symbol, group="Custom")]
+    insts, warns = build_universe(args.watchlist)
+    for w in warns:
+        log.warning(w)
+    if args.groups:
+        wanted = {g.strip().lower() for g in args.groups.split(",") if g.strip()}
+        insts = [i for i in insts if i.group.lower() in wanted]
     if args.only:
-        wanted = {s.strip() for s in args.only.split(",") if s.strip()}
-        missing = wanted - {i.name for i in insts}
+        wanted_names = {s.strip() for s in args.only.split(",") if s.strip()}
+        missing = wanted_names - {i.name for i in insts}
         if missing:
-            raise SystemExit(f"--only: not in watchlist: {sorted(missing)}")
-        insts = [i for i in insts if i.name in wanted]
+            raise SystemExit(f"--only: not in the universe: {sorted(missing)}")
+        insts = [i for i in insts if i.name in wanted_names]
+    if not insts:
+        raise SystemExit("No instruments to watch: check the 'universe' section of the watchlist, --groups and --only.")
     return insts
 
 
@@ -250,6 +304,7 @@ def main(argv=None) -> None:
     insts, flags = build_instruments(args), flags_from(args)
     for inst in insts:
         make_config(inst, flags)  # fail fast on bad parameters
+    args.verbose_status = len(insts) <= 12
     notifier, state, health = Notifier(args.dry_run), State(args.state_file), Health()
 
     stop = threading.Event()
@@ -257,10 +312,11 @@ def main(argv=None) -> None:
         if hasattr(os_signal, sig_name):
             os_signal.signal(getattr(os_signal, sig_name), lambda *_: stop.set())
 
-    names = ", ".join(i.name for i in insts)
-    log.info("Bot started: %d instruments (%s)", len(insts), names)
+    groups = ", ".join(f"{n} {g}" for g, n in Counter(i.group for i in insts).items())
+    log.info("Bot started: %d instruments (%s)", len(insts), groups)
     if not args.once:
-        notifier.send(f"✅ scalp5-bot started on {len(insts)} instruments: {names}. Checking at every 5-minute candle close.")
+        notifier.send(f"✅ scalp5-bot started: {len(insts)} instruments ({groups}). "
+                      "Checking at every 5-minute candle close.")
 
     last_beat = time.time()
     while not stop.is_set():
@@ -268,7 +324,7 @@ def main(argv=None) -> None:
         if args.heartbeat_hours and time.time() - last_beat >= args.heartbeat_hours * 3600 and not args.once:
             bad = [n for n, r in results.items() if r == "FAIL"]
             notifier.send(f"🫀 scalp5-bot alive: {len(results) - len(bad)}/{len(results)} feeds OK"
-                          + (f". Failing: {', '.join(bad)}" if bad else "."))
+                          + (f". Failing: {', '.join(bad[:15])}" if bad else "."))
             last_beat = time.time()
         if args.once:
             break

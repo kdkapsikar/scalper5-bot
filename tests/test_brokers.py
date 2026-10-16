@@ -12,8 +12,15 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from scalpbot import bot, brokers
 from scalpbot.strategy import add_signals, compute, latest_signal
-from scalpbot.watchlist import Instrument, load_watchlist, make_config
+from scalpbot.watchlist import Instrument, load_universe_config, load_watchlist, make_config
 from test_strategy import make_df
+
+
+@pytest.fixture(autouse=True)
+def _fresh_caches(monkeypatch):
+    brokers.clear_candle_caches()
+    monkeypatch.setenv("UPSTOX_MAX_RPS", "1000")   # no throttle sleeps in tests
+    yield
 
 
 class FakeResp:
@@ -180,11 +187,19 @@ def test_resolve_mcx_nearest_future_and_daily_cache(monkeypatch, tmp_path):
 
 # --------------------------------------------------------------------------- watchlist
 def test_default_watchlist_is_valid():
-    insts = load_watchlist("watchlist.yaml")
-    assert {"NIFTY 50", "BTC", "ETH", "PAXG"} <= {i.name for i in insts}
-    assert {i.source for i in insts} == {"upstox", "coinswitch"}
-    for i in insts:
-        make_config(i)
+    conf = load_universe_config("watchlist.yaml")
+    assert conf["crypto"] == ["BTCUSDT", "ETHUSDT", "PAXGUSDT", "XAUUSDT"]
+    assert conf["index_futures"] and conf["stock_futures"] and conf["mcx"] == []
+    assert load_watchlist("watchlist.yaml") == []     # no hand-picked extras by default
+
+
+def test_universe_config_validation(tmp_path):
+    f = tmp_path / "w.yaml"
+    f.write_text("universe:\n  stock_futurez: true\n")
+    with pytest.raises(ValueError, match="unknown universe"):
+        load_universe_config(str(f))
+    f.write_text("instruments:\n  - {name: A, source: binance, symbol: X}\n")
+    assert load_universe_config(str(f)) is None
 
 
 def test_watchlist_validation(tmp_path):
@@ -295,3 +310,50 @@ def test_recovery_message(monkeypatch, tmp_path):
     mode["fail"] = False
     bot.run_all([inst], args, LOOSE, state, notifier, health)
     assert any("recovered" in m for m in notifier.sent)
+
+
+def test_many_signals_become_one_digest(monkeypatch, tmp_path):
+    good = _fresh_signal_df()
+    insts = [Instrument(name=f"STK{i} FUT", source="binance", symbol=f"S{i}") for i in range(10)]
+    monkeypatch.setattr(bot, "fetch_candles", lambda inst, n=1000: good)
+    args = bot.parse_args(["--dry-run", "--state-file", str(tmp_path / "s.json")])
+    notifier = FakeNotifier()
+    res = bot.run_all(insts, args, LOOSE, bot.State(args.state_file), notifier, bot.Health())
+    assert list(res.values()) == ["alert"] * 10
+    assert len(notifier.sent) == 1 and "10 signals" in notifier.sent[0] and "STK9 FUT" in notifier.sent[0]
+
+
+def test_upstox_history_is_cached_for_the_day(monkeypatch, tmp_path):
+    monkeypatch.setenv("UPSTOX_TOKEN_FILE", str(tmp_path / "none.txt"))
+    monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", "tok")
+    base = pd.Timestamp.now(tz="Asia/Kolkata").floor("5min") - pd.Timedelta(minutes=50)
+    rows = [[_ist(base + pd.Timedelta(minutes=5 * i)), 100.0, 101.0, 99.0, 100.5, 10, 0] for i in range(5)][::-1]
+    urls = []
+
+    def fake_get(url, headers=None, timeout=None):
+        urls.append(url)
+        return FakeResp({"status": "success", "data": {"candles": rows}})
+
+    monkeypatch.setattr(brokers.requests, "get", fake_get)
+    for _ in range(3):
+        df = brokers.fetch_upstox("NSE_FO|1")
+    assert len(df) == 5
+    assert sum("/intraday/" not in u for u in urls) == 1      # history fetched once
+    assert sum("/intraday/" in u for u in urls) == 3          # today's candles every time
+
+
+def test_upstox_retries_on_rate_limit(monkeypatch, tmp_path):
+    monkeypatch.setenv("UPSTOX_TOKEN_FILE", str(tmp_path / "none.txt"))
+    monkeypatch.setenv("UPSTOX_ACCESS_TOKEN", "tok")
+    monkeypatch.setattr(brokers.time, "sleep", lambda s: None)
+    base = pd.Timestamp.now(tz="Asia/Kolkata").floor("5min") - pd.Timedelta(minutes=10)
+    rows = [[_ist(base), 100.0, 101.0, 99.0, 100.5, 10, 0]]
+    calls = {"n": 0}
+
+    def fake_get(url, headers=None, timeout=None):
+        calls["n"] += 1
+        return FakeResp({}, 429) if calls["n"] == 1 else FakeResp({"data": {"candles": rows}})
+
+    monkeypatch.setattr(brokers.requests, "get", fake_get)
+    assert len(brokers.fetch_upstox("NSE_FO|2")) == 1
+    assert calls["n"] == 3        # 429 then success for history, then intraday
