@@ -1,11 +1,25 @@
 # scalp5-bot
 
-5-minute scalping signals for **Indian index and F&O stock futures** (via Upstox) and **BTC, ETH, PAXG and XAUUSDT** futures (via CoinSwitch PRO). Two ways to use it:
+5-minute scalping signals for **Indian index and F&O stock futures** (via Upstox) and **BTC, ETH, PAXG and XAUUSDT** futures (via CoinSwitch PRO). Everything runs from one **web portal**:
 
-1. **Scanner app** (`streamlit run app.py`): pick a mode in the sidebar.
-   - **Scan all**: scans every instrument and lists the ones satisfying all the rules right now.
-   - **Single ticker**: choose one from a dropdown (type to search) and see its full status: signal, a LONG and a SHORT checklist showing which conditions pass, a chart, and the last SMA/DEMA crosses.
-2. **Alert bot** (`python -m scalpbot.bot`): runs continuously, wakes at every 5-minute candle close, checks the whole universe and sends Telegram/console alerts.
+```bash
+streamlit run app.py        # or double-click start.command on a Mac
+```
+
+Everyone **signs in** first. People create an account, an admin approves it, and each person connects **their own** Upstox and CoinSwitch accounts (keys are encrypted per user).
+
+| Page | Who | What you do there |
+|------|-----|-------------------|
+| **Connect** | everyone | Save your own Upstox and CoinSwitch keys, do the daily Upstox login, run a connection test |
+| **Scanner** | everyone | **Scan all**: everything satisfying the rules now. **Single ticker**: one instrument's full status, checklists and chart |
+| **Market mood** 🐂🐻 | everyone | Bull / Bear read of Indian futures and of crypto, with the reasons behind it |
+| **Backtest** | everyone | Replay the rules on a ticker's recent history and compare the three 200 DEMA trigger modes |
+| **My account** | everyone | Change your password |
+| **Users** | admins | Approve or reject sign-ups, disable / re-enable, make admin, delete, and the activity log |
+| **Bull & Bear** 🐂🐻 | everyone, every page | Floating chat assistant (bottom-right): market mood, live signals, any ticker's status, indicator explanations, connection check |
+| **Alert bot** | admins, local installs only | Start / stop the 5-minute alert bot in the background with your saved keys |
+
+The command-line tools (`python -m scalpbot.scan`, `.bot`, `.check`, `.backtest`) still work too.
 
 > **Analysis and alerts only.** Nothing here places orders. Nothing here is financial advice; backtest and paper-trade before risking money.
 >
@@ -41,20 +55,52 @@ Upstox's instrument list is downloaded once a day, so futures roll to the next e
 ## Setup
 
 ```bash
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+python3 -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env                                   # fill in the keys below
-```
-
-1. **CoinSwitch keys:** create an API key on CoinSwitch PRO, restricted to your IP and, if offered, with no withdrawal rights. Put `COINSWITCH_API_KEY` and `COINSWITCH_SECRET_KEY` (hex) in `.env`.
-2. **Upstox login:** put `UPSTOX_API_KEY`, `UPSTOX_API_SECRET`, `UPSTOX_REDIRECT_URI` in `.env`, then `python scripts/upstox_token.py` (prints the login URL) and `python scripts/upstox_token.py --code <code from the redirect URL>`. Upstox tokens expire daily: repeat each trading morning. The app and bot re-read the token file, and the bot sends a Telegram alert when the token is rejected.
-3. **Verify:** `python -m scalpbot.check` fetches 3 sample instruments per group (`--all` for everything) and shows candle counts, last candle time and any login or symbol errors. Confirm `PAXGUSDT` and `XAUUSDT` exist on CoinSwitch futures and that the Upstox futures resolve.
-
-## 1. The scanner app
-
-```bash
 streamlit run app.py
 ```
+
+Open http://localhost:8501 and **create an account**. On a local install the first account becomes the admin (or list your email in `ADMIN_EMAILS`). Accounts, roles and encrypted keys live in `.state/portal.db`; the encryption key is created at `.state/master.key` (both git-ignored). Then open the **Connect** page:
+
+1. **Upstox:** create an app on the Upstox developer site and register the portal address (`http://localhost:8501/` locally, or `PORTAL_URL` when hosted) as its redirect URI. Save the API key, secret and redirect URI, press *Prepare Upstox login*, then *Log in to Upstox*; you come back to the portal and the token is saved to your account. Tokens expire daily: repeat each trading morning.
+2. **CoinSwitch:** save the API key and secret (no withdrawal rights if offered; restrict to your IP only when running locally).
+3. **Telegram** (local installs, optional): bot token and chat id for the Alert bot, with a test button.
+4. **Test connections:** fetches real candles and shows what came back. Confirm `PAXGUSDT` and `XAUUSDT` are OK.
+
+The portal never uses keys from the server's `.env`; those are only for the command-line tools.
+
+## Hosting (GitHub + Render + Neon)
+
+The same setup as wardwatch and eNagarparishad: GitHub holds the code, [Render](https://render.com) runs the portal from
+[`render.yaml`](render.yaml), and [Neon](https://neon.tech) holds the database.
+
+1. **Database:** create a free Neon project and copy its *direct* connection string (ends in `?sslmode=require`).
+2. **Master key:** run `python -m scalpbot.accounts --new-master-key` and keep a copy somewhere safe.
+3. **Render:** *New > Blueprint*, pick this repo, then fill in `DATABASE_URL`, `SCALP_MASTER_KEY`, `ADMIN_EMAILS` and
+   `PORTAL_URL` (the service's address, e.g. `https://scalp5-portal.onrender.com/`).
+4. **First admin:** sign up with an email in `ADMIN_EMAILS`. Share the address; new sign-ups wait under **Users**.
+
+On the free plan the portal sleeps after ~15 idle minutes and the first visit after that takes ~30-60 s. Everything
+works on demand, including the Bull & Bear assistant; only the 5-minute **Alert bot** needs an always-on machine.
+
+### Alternative: Streamlit Community Cloud
+
+GitHub holds the code; [Streamlit Community Cloud](https://share.streamlit.io) runs it (free, deploys from a public or private GitHub repo).
+
+1. **Database:** create a free Postgres database on [Neon](https://neon.tech) or [Supabase](https://supabase.com) and copy its connection string. Community Cloud has no lasting disk, so SQLite would be wiped on every restart.
+2. **Master key:** run `python -m scalpbot.accounts --new-master-key` and keep a copy somewhere safe. If you lose it, everyone has to re-enter their keys.
+3. **Deploy:** on share.streamlit.io choose *Create app*, pick the repo, branch `main`, main file `app.py`. Under *Advanced settings > Secrets* paste the contents of [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) with your values (`DATABASE_URL`, `SCALP_MASTER_KEY`, `ADMIN_EMAILS`, `PORTAL_URL`, `SCALP_HOSTED`).
+4. **First admin:** sign up with an email listed in `ADMIN_EMAILS`; you are in immediately as admin. Share the app URL; new sign-ups appear under **Users** for approval.
+
+What changes when hosted:
+
+- **No Alert bot.** Community Cloud apps sleep when nobody is using them and can't run a background job every 5 minutes. Run the bot on your own computer or a small always-on server instead (`docker compose up -d`).
+- **CoinSwitch keys can't be IP-restricted**, because the cloud server's address changes. Ask people to create keys with no withdrawal rights.
+- **Upstox rate limits are per user** (each person uses their own token), so one user's scans don't eat into another's.
+- **Trust:** the admin can't see anyone's keys in the portal, but whoever holds both the database and `SCALP_MASTER_KEY` could decrypt them. The Connect page tells users this.
+- Signing in lasts for the browser tab's session (refreshing the page signs you out) and ends after 12 idle hours. Five wrong passwords lock an account for 15 minutes.
+
+## 1. The scanner page
 
 Sidebar: **Mode**, **Universe** (tick which groups), **Strategy rules** (DEMA trigger mode and each filter), **Look back** (a signal fires on a candle close, so the scan also reports signals from the last N closed candles, default 3, so you don't miss one by opening the app late), and **Include closed markets** (to review the last session, e.g. at night).
 
@@ -63,7 +109,43 @@ Sidebar: **Mode**, **Universe** (tick which groups), **Strategy rules** (DEMA tr
 
 There is also a command-line version: `python -m scalpbot.scan` (scan all), `python -m scalpbot.scan --ticker "RELIANCE FUT"` (one ticker), with `--groups`, `--lookback`, `--show-blocked`, `--include-closed`.
 
+## Market mood (Bull 🐂 / Bear 🐻)
+
+The **Market mood** page scores Indian futures and crypto separately from -100 (strong bear) to +100 (strong bull), using the scanner's own indicators:
+
+| Weight | Component | Bullish end |
+|---|---|---|
+| 30% | 200 DEMA breadth | every instrument closes above its 200 DEMA |
+| 20% | Supertrend breadth | every Supertrend points up |
+| 15% | SMA 22/33 breadth | every SMA 22 is above its SMA 33 |
+| 20% | Leader (NIFTY FUT, BTCUSDT) | above the DEMA, Supertrend up, 22 above 33 |
+| 10% | Median RSI | 70 or more |
+| 5% | Fresh signals | only LONG signals in the last 3 candles |
+
+Labels: 40+ Strong Bull, 15+ Bull, -15 to 15 Neutral, -15 or lower Bear, -40 or lower Strong Bear. *Quick* uses index futures and crypto; *Full* adds every F&O stock future for a proper Indian breadth reading (a minute or two). It describes the market right now; it is not a forecast.
+
+## Bull & Bear, the assistant
+
+Two mascots float at the bottom-right of every signed-in page, like eNagarparishad's मदतनीस: **Bull** (green scarf,
+upbeat) and **Bear** (red scarf, cautious). Whichever matches the current market mood stands in front, and the bubble
+greets you with it. *Ask Bull & Bear* opens the chat:
+
+| Menu chip | What you get |
+|---|---|
+| 🐂🐻 Market mood | India and crypto labels and scores, the main reasons, and a caveat from the other mascot |
+| ⚡ Live signals | LONG / SHORT setups on index futures and crypto in the last 3 closed candles, with stop and target, plus near-misses |
+| 🔎 Check a ticker | Price, 200 DEMA side, Supertrend, SMA 22/33, RSI and any signal for one instrument |
+| 📚 Explain | SMA, 200 DEMA, Supertrend, RSI, pivots, ATR stops, the mood score, fees and slippage, blocked setups |
+| 🔌 My connections | Whether your Upstox token is fresh and your CoinSwitch keys are saved |
+
+Or just type: *nifty*, *how is banknifty*, *btc*, *gold*, *any signals?*, *what is rsi*. It reads **your own** broker
+data (cached per 5-minute candle), describes what the rules see and never places orders or gives advice. Code:
+[scalpbot/assistant.py](scalpbot/assistant.py) (the logic) and [portal/assistant.py](portal/assistant.py) +
+[portal/mascots.py](portal/mascots.py) (chat window and the animated SVG mascots).
+
 ## 2. The alert bot
+
+Admins on a local install can start and stop it from the **Alert bot** page (it uses that admin's saved keys). From a terminal instead (keys from `.env`):
 
 ```bash
 python -m scalpbot.bot                                   # whole universe

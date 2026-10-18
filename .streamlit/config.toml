@@ -1,0 +1,63 @@
+# Scalp5 look and feel. Streamlit follows the viewer's system light/dark setting; both palettes are defined below.
+# Semantic colours: green = bull / LONG, red = bear / SHORT, indigo = brand and actions.
+
+[client]
+toolbarMode = "minimal"          # hide the developer "Deploy" button and menu
+showSidebarNavigation = true
+
+[server]
+runOnSave = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
+headingFont = "Space Grotesk:https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap, Inter, sans-serif"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap, monospace"
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+headingFontSizes = ["2.15rem", "1.45rem", "1.15rem", "1rem", "0.95rem", "0.9rem"]
+baseFontSize = 15
+baseRadius = "0.7rem"
+buttonRadius = "0.6rem"
+showWidgetBorder = true
+showSidebarBorder = true
+metricValueFontSize = "1.85rem"
+metricValueFontWeight = 650
+chartCategoricalColors = ["#5b6cff", "#16a34a", "#e5484d", "#f59e0b", "#0ea5e9", "#a855f7", "#14b8a6", "#f97316"]
+
+[theme.light]
+primaryColor = "#4f5dff"
+backgroundColor = "#f6f7fb"
+secondaryBackgroundColor = "#eceff6"
+textColor = "#141a2b"
+borderColor = "#dde2ee"
+linkColor = "#4f5dff"
+greenColor = "#16a34a"
+redColor = "#e5484d"
+blueColor = "#4f5dff"
+dataframeHeaderBackgroundColor = "#eef1f8"
+codeBackgroundColor = "#eef1f8"
+
+[theme.light.sidebar]
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f3f9"
+borderColor = "#e4e8f1"
+
+[theme.dark]
+primaryColor = "#7c8bff"
+backgroundColor = "#0b1020"
+secondaryBackgroundColor = "#151c31"
+textColor = "#e7eaf3"
+borderColor = "#232c47"
+linkColor = "#9aa6ff"
+greenColor = "#22c55e"
+redColor = "#f05252"
+blueColor = "#7c8bff"
+dataframeHeaderBackgroundColor = "#151c31"
+codeBackgroundColor = "#151c31"
+
+[theme.dark.sidebar]
+backgroundColor = "#0e1428"
+secondaryBackgroundColor = "#182039"
+borderColor = "#1d2540"

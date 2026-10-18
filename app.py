@@ -1,18 +1,15 @@
-"""Scalp5 Scanner (Streamlit).  Start it with:   streamlit run app.py
+"""Scalp5 web portal.  Start it with:   streamlit run app.py
 
-Two ways to use it, chosen in the sidebar:
-  * Scan all     - scans the whole universe and lists everything that satisfies the rules right now
-  * Single ticker - pick one ticker from the dropdown and see its full status, checklist and chart
+Everyone signs in first. Each person connects their own Upstox and CoinSwitch accounts; their keys are stored
+encrypted and only used for their own pages. Admins also see the Admin page (users, approvals, audit log).
+  Connect      save your keys, do the daily Upstox login, test the connections
+  Scanner      Scan all (everything satisfying the rules now) or Single ticker (pick one from a dropdown)
+  Market mood  Bull / Bear read of Indian futures and crypto
+  Backtest     replay the rules on an instrument's recent history
+  Alert bot    local installs only: start / stop the 5-minute alert bot (admins)
 """
 from __future__ import annotations
 
-import json
-import os
-import time
-from collections import Counter
-from datetime import date, datetime
-
-import pandas as pd
 import streamlit as st
 
 try:
@@ -21,180 +18,93 @@ try:
 except ImportError:
     pass
 
-from scalpbot import scan as sc
-from scalpbot.brokers import upstox_token
-from scalpbot.chart import make_chart
-from scalpbot.strategy import fmt
-from scalpbot.universe import GROUPS, build_universe
+from scalpbot import creds
+from scalpbot import portal_tools as pt
+from scalpbot.brokers import clear_candle_caches
 
-st.set_page_config(page_title="Scalp5 Scanner", page_icon="📈", layout="wide")
-WATCHLIST = os.getenv("SCALP_WATCHLIST", "watchlist.yaml")
+from portal import ui
+from portal.assistant import launcher
+from portal.auth import accounts, current_user, hosted, sign_out
 
+creds.strict()                               # this process serves many users: never use the server's .env keys
+st.set_page_config(page_title="Scalp5", page_icon=str(ui.ASSETS / "mark.svg"), layout="wide")
+ui.apply_theme()
 
-@st.cache_data(ttl=3600, show_spinner="Loading instrument list...")
-def load_universe(path: str, day: str):
-    return build_universe(path)
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def load_detail(_inst, name: str, flags_key: str, lookback: int, bucket_id: int, refresh: int):
-    """Cached per instrument and per 5-minute bucket, so a new candle always means fresh data."""
-    return sc.run_one(_inst, json.loads(flags_key), lookback, ignore_stale=True)
-
-
-# --------------------------------------------------------------------------- sidebar
 try:
-    universe, uni_warnings = load_universe(WATCHLIST, date.today().isoformat())
-except Exception as e:  # bad watchlist file etc.
-    st.error(f"Could not build the instrument list: {e}")
+    acc = accounts()
+except Exception as e:      # database unreachable, master key missing, ...
+    st.error(f"The portal could not open its accounts database: {e}")
     st.stop()
 
-st.sidebar.header("Scalp5 Scanner")
-mode = st.sidebar.radio("Mode", ["Scan all", "Single ticker"], key="mode",
-                        help="Scan all lists everything that satisfies the rules. Single ticker shows one instrument in detail.")
-available = [g for g in GROUPS if any(i.group == g for i in universe)]
-groups = st.sidebar.multiselect("Universe", available, default=available, key="groups")
+# --------------------------------------------------------------------------- Upstox login redirect
+# Upstox sends people back to the portal address with ?code=...&state=...  The state was issued to one signed-in
+# user, so the token is saved to that user even if this browser tab is a fresh, signed-out session.
+qp = st.query_params
+if "code" in qp and "state" in qp:
+    code, state = qp.get("code"), qp.get("state")
+    owner = acc.consume_login_state(state)
+    if owner is None:
+        st.session_state["conn_msg"] = ("error", "That Upstox login link has expired or was already used. "
+                                                 "Start the login again from the Connect page.")
+    else:
+        c = acc.load_creds(owner.id)
+        try:
+            token = pt.upstox_get_token(code, c.UPSTOX_API_KEY, c.UPSTOX_API_SECRET, c.UPSTOX_REDIRECT_URI)
+            acc.save_keys(owner.id, {"UPSTOX_ACCESS_TOKEN": token})
+            acc.log("upstox_login", owner.email)
+            clear_candle_caches()
+            st.session_state["conn_msg"] = ("success", pt.saved_message())
+        except Exception as e:
+            st.session_state["conn_msg"] = ("error", str(e))
+    st.session_state["auth_msg"] = st.session_state["conn_msg"]
+    st.query_params.clear()
 
-with st.sidebar.expander("Strategy rules", expanded=False):
-    dema_mode = st.selectbox("200 DEMA cross trigger", ["both", "fast", "off"], key="dema_mode",
-                             help="both: either 22 or 33 crossing the DEMA counts, once both lines are on the new side. "
-                                  "fast: the 22 line crossing is enough. off: SMA 22/33 cross only.")
-    req_st = st.checkbox("Supertrend must agree", True, key="req_st")
-    req_dema = st.checkbox("Price on the right side of the 200 DEMA", True, key="req_dema")
-    req_rsi = st.checkbox("RSI zone and direction", True, key="req_rsi")
-    req_room = st.checkbox("Room to the next pivot level", True, key="req_room")
-lookback = st.sidebar.slider("Look back (closed candles)", 1, 12, 3, key="lookback",
-                             help="Signals fire when a 5-minute candle closes. This also shows signals from the last N "
-                                  "candles, so you don't miss one if you open the app a few minutes late.")
-ignore_stale = st.sidebar.checkbox("Include closed markets (review last session)", False, key="ignore_stale")
+user = current_user()
 
-flags = {"dema_cross_mode": dema_mode}
-for on, key in ((req_st, "require_supertrend"), (req_dema, "require_dema_bias"),
-                (req_rsi, "require_rsi"), (req_room, "require_pivot_room")):
-    if not on:
-        flags[key] = False
-flags_key = json.dumps(flags, sort_keys=True)
+# --------------------------------------------------------------------------- signed out: only the sign-in page
+if user is None:
+    creds.activate(creds.Creds())            # never fall back to keys in this server's environment
+    st.navigation([st.Page("portal/login.py", title="Sign in", icon=":material/lock:", url_path="signin")], position="hidden").run()
+    st.stop()
 
+# --------------------------------------------------------------------------- signed in
+st.session_state.pop("auth_msg", None)
+my = acc.load_creds(user.id)
+creds.activate(my)
+up_ok = bool(my.UPSTOX_ACCESS_TOKEN)
+if user.is_admin and not hosted() and my.UPSTOX_ACCESS_TOKEN and pt.bot_pid():
+    tf = pt.bot_token_file(user.id)             # keep a running local bot on today's token
+    if not tf.exists() or tf.read_text().strip() != my.UPSTOX_ACCESS_TOKEN:
+        pt.write_token_file(my.UPSTOX_ACCESS_TOKEN, tf)
+cs_ok = bool(my.COINSWITCH_API_KEY and my.COINSWITCH_SECRET_KEY)
+
+connect = st.Page("portal/connect.py", title="Connect", icon=":material/link:", url_path="connect")
+scanner = st.Page("portal/scanner.py", title="Scanner", icon=":material/radar:", url_path="scanner", default=True)
+mood = st.Page("portal/mood.py", title="Market mood", icon=":material/insights:", url_path="mood")
+backtest = st.Page("portal/backtest.py", title="Backtest", icon=":material/history:", url_path="backtest")
+account = st.Page("portal/account.py", title="My account", icon=":material/person:", url_path="account")
+pages = {"Trade": [scanner, mood, backtest], "Setup": [connect, account]}
+if user.is_admin and not hosted():
+    pages["Trade"].append(st.Page("portal/alerts.py", title="Alert bot", icon=":material/notifications_active:", url_path="bot"))
+if user.is_admin:
+    pending = sum(1 for u in acc.list_users() if u.status == "pending")
+    pages["Admin"] = [st.Page("portal/admin.py", title=f"Users ({pending} pending)" if pending else "Users",
+                              icon=":material/group:", url_path="admin")]
+
+page = st.navigation(pages)
+if (not (up_ok or cs_ok) and page.title == "Scanner" and not st.session_state.get("_sent_to_connect")):
+    st.session_state["_sent_to_connect"] = True          # first visit with nothing connected: jump there once
+    st.switch_page(connect)
+
+ui.logo()
+ui.user_card(user.name, user.email, user.role, up_ok, cs_ok)
+if st.sidebar.button("Sign out", key="sign_out", icon=":material/logout:", type="tertiary"):
+    acc.log("logout", user.email)
+    sign_out()
+    st.rerun()
 st.sidebar.divider()
-up_ok = bool(upstox_token())
-cs_ok = bool(os.getenv("COINSWITCH_API_KEY") and os.getenv("COINSWITCH_SECRET_KEY"))
-st.sidebar.caption("Connections")
-st.sidebar.write(("✅" if up_ok else "❌") + " Upstox token" + ("" if up_ok else " missing: run scripts/upstox_token.py"))
-st.sidebar.write(("✅" if cs_ok else "❌") + " CoinSwitch keys" + ("" if cs_ok else " missing: see .env.example"))
-for w in uni_warnings:
-    st.sidebar.warning(w)
 
-chosen = [i for i in universe if i.group in groups]
-by_name = {i.name: i for i in chosen}
-
-
-# --------------------------------------------------------------------------- detail view
-def render_detail(inst) -> None:
-    with st.spinner(f"Loading {inst.name}..."):
-        res, ind, cfg = load_detail(inst, inst.name, flags_key, lookback,
-                                    int(time.time() // 300), st.session_state.get("refresh", 0))
-    st.subheader(f"{inst.name}  ·  {inst.group}")
-    if res.status == "ERROR":
-        st.error(res.error)
-        return
-    if res.stale:
-        last = res.last_candle.tz_convert(sc.IST)
-        st.warning(f"The market looks closed: the last closed candle is {last:%d %b %H:%M} IST (5-minute candle open). "
-                   "Showing the last session.")
-    text = sc.headline(res, lookback)
-    if res.status in ("LONG", "SHORT"):
-        (st.success if res.status == "LONG" else st.error)(text)
-        if res.stop is not None:
-            st.caption(f"Stop {fmt(res.stop)}" + (f"  ·  Target (next pivot) {fmt(res.target)}" if res.target else ""))
-    elif res.status == "BLOCKED":
-        st.warning(text)
-    else:
-        st.info(text)
-
-    m = st.columns(5)
-    m[0].metric("Last price", fmt(res.price))
-    m[1].metric("RSI (14)", f"{res.rsi:.1f}")
-    m[2].metric("Supertrend", "Up" if res.st_up else "Down")
-    last = ind.iloc[-1]
-    m[3].metric("vs 200 DEMA", f"{(last['close'] / last['dema'] - 1) * 100:+.2f}%")
-    m[4].metric("22 vs 33 SMA", "22 above" if last["sma_fast"] > last["sma_slow"] else "22 below")
-
-    c1, c2 = st.columns(2)
-    for col, side in ((c1, "LONG"), (c2, "SHORT")):
-        col.markdown(f"**{side} checklist** (as of the latest closed candle)")
-        col.dataframe(sc.checks_frame(res.checks[side]), hide_index=True)
-    st.plotly_chart(make_chart(ind, f"{inst.name} - 5 minute"))
-    st.markdown("\n".join(f"- **{k}:** {v}" for k, v in res.snapshot.items()))
-
-
-# --------------------------------------------------------------------------- the app
-st.title("Scalp5 Scanner")
-st.caption("5-minute confluence: SMA 22/33 cross or the lines crossing the 200 DEMA, filtered by Supertrend, 200 DEMA side, "
-           "RSI and pivot room. For analysis and alerts only; not financial advice.")
-
-if mode == "Scan all":
-    c1, c2 = st.columns([1, 4])
-    run = c1.button("Run scan", type="primary", key="run_scan", disabled=not chosen)
-    c2.caption(f"{len(chosen)} instruments selected. A scan fetches fresh 5-minute candles for each one, "
-               "so a full F&O list takes a minute or two.")
-    if run:
-        bar = st.progress(0.0, text="Scanning...")
-
-        def on_progress(done: int, total: int) -> None:
-            bar.progress(done / total, text=f"Scanned {done}/{total}")
-
-        results = sc.scan(chosen, flags, lookback, ignore_stale, workers=4, progress=on_progress)
-        bar.empty()
-        st.session_state["scan"] = {"results": results, "at": datetime.now(), "lookback": lookback}
-
-    data = st.session_state.get("scan")
-    if not data:
-        st.info("Press **Run scan** to check every selected instrument against the rules.")
-    else:
-        results = data["results"]
-        cnt = Counter(r.status for r in results)
-        cols = st.columns(6)
-        for col, label, value in zip(cols, ["Scanned", "Long", "Short", "Blocked", "Market closed", "Errors"],
-                                     [len(results), cnt["LONG"], cnt["SHORT"], cnt["BLOCKED"], cnt["STALE"], cnt["ERROR"]]):
-            col.metric(label, value)
-        st.caption(f"Scan finished {data['at']:%H:%M:%S}, looking back {data['lookback']} closed candle(s). "
-                   "Run it again after the next 5-minute close for fresh results.")
-
-        hits = sc.to_frame(results, ("LONG", "SHORT"))
-        if hits.empty:
-            st.info("No instrument satisfies all the conditions in the look-back window.")
-        else:
-            st.subheader("Satisfying all conditions")
-            st.dataframe(hits, hide_index=True)
-            st.download_button("Download as CSV", hits.to_csv(index=False), "scalp5_signals.csv", "text/csv")
-
-        if st.checkbox("Also show near-misses (a trigger fired but a filter blocked it)", key="show_blocked"):
-            near = sc.to_frame(results, ("BLOCKED",))
-            if near.empty:
-                st.caption("No blocked setups in the window.")
-            else:
-                st.dataframe(near, hide_index=True)
-
-        if cnt["STALE"]:
-            with st.expander(f"{cnt['STALE']} instruments skipped because their market looks closed"):
-                st.write(", ".join(r.name for r in results if r.status == "STALE"))
-        if cnt["ERROR"]:
-            with st.expander(f"{cnt['ERROR']} instruments failed"):
-                st.dataframe(pd.DataFrame([{"Ticker": r.name, "Error": r.error} for r in results if r.status == "ERROR"]),
-                             hide_index=True)
-
-        pick_names = [r.name for r in results if r.status in ("LONG", "SHORT", "BLOCKED")]
-        if pick_names:
-            st.divider()
-            pick = st.selectbox("Open details for", ["-"] + pick_names, key="detail_pick")
-            if pick != "-" and pick in by_name:
-                render_detail(by_name[pick])
-else:
-    if not by_name:
-        st.info("No instruments in the selected universe.")
-        st.stop()
-    c1, c2 = st.columns([4, 1])
-    choice = c1.selectbox("Ticker (type to search)", list(by_name), key="ticker")
-    if c2.button("Refresh", key="refresh_btn"):
-        st.session_state["refresh"] = st.session_state.get("refresh", 0) + 1
-    render_detail(by_name[choice])
+try:
+    page.run()
+finally:
+    launcher()                               # Bull & Bear, bottom-right (after the page, so it sees today's mood)

@@ -1,0 +1,34 @@
+# Render Blueprint for the Scalp5 portal (Streamlit app + Bull & Bear assistant). Database: Neon, as in wardwatch.
+# New > Blueprint > pick this repo (private repos work once Render's GitHub app can see it), then fill in the
+# secrets below. (Free plan: the service sleeps after ~15 min idle, so the first visit after a pause takes ~30-60 s.
+# The Bull & Bear assistant answers on demand, so it works on the free plan; the 5-minute Alert bot does not.)
+services:
+  - type: web
+    name: scalp5-portal
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    healthCheckPath: /_stcore/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: TZ
+        value: Asia/Kolkata
+      - key: SCALP_HOSTED
+        value: "1"
+      # Neon *direct* connection string (not the pooled one), ending in ?sslmode=require
+      - key: DATABASE_URL
+        sync: false
+      # Encrypts everyone's broker keys: python -m scalpbot.accounts --new-master-key
+      # Keep a copy somewhere safe - if it is lost, every user has to re-enter their keys.
+      - key: SCALP_MASTER_KEY
+        sync: false
+      # Comma-separated emails that become admins when they sign up
+      - key: ADMIN_EMAILS
+        sync: false
+      # The public address, e.g. https://scalp5-portal.onrender.com/ - users register it as their Upstox redirect URI
+      - key: PORTAL_URL
+        sync: false

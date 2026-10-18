@@ -1,4 +1,5 @@
 """Universe building, scan/analysis logic, the CLI and the Streamlit app (run headless with AppTest)."""
+import re
 import zlib
 from datetime import date
 from pathlib import Path
@@ -243,7 +244,7 @@ def test_chart_builds():
 
 # --------------------------------------------------------------------------- the app, run headless
 @pytest.fixture
-def app(monkeypatch, tmp_path):
+def app(monkeypatch, tmp_path, portal_db):
     pytest.importorskip("streamlit")
     pytest.importorskip("plotly")
     from streamlit.testing.v1 import AppTest
@@ -260,7 +261,9 @@ def app(monkeypatch, tmp_path):
         return _recent_frame(inst.name)
 
     monkeypatch.setattr(sc, "fetch_candles", fake)
-    return AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
+    from tests.conftest import make_user, sign_in
+    user = make_user(portal_db, keys={"UPSTOX_ACCESS_TOKEN": "test-token"})   # "connected": opens on the Scanner
+    return sign_in(AppTest.from_file(str(ROOT / "app.py"), default_timeout=120), user)
 
 
 def test_app_scan_all_mode(app):
@@ -270,7 +273,7 @@ def test_app_scan_all_mode(app):
     assert set(app.multiselect(key="groups").value) == {"Index futures", "Stock futures", "Crypto"}
     app.button(key="run_scan").click().run()
     assert not app.exception
-    m = {x.label: x.value for x in app.metric}
+    m = {re.sub(r":\w+\[(.*)\]", r"\1", x.label): x.value for x in app.metric}   # labels may carry colour markup
     assert m["Scanned"] == "8"                       # 2 index + 2 stock futures + 4 crypto
     assert m["Errors"] == "4"                        # crypto keys are "missing" in this fake
     assert int(m["Long"]) + int(m["Short"]) + int(m["Blocked"]) + int(m["Market closed"]) + 4 <= 8

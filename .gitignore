@@ -7,3 +7,5 @@ __pycache__/
 *.log
 trades.csv
 data/
+*.zip
+.streamlit/secrets.toml

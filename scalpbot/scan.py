@@ -16,6 +16,7 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 
+from . import creds
 from .brokers import AuthExpired
 from .strategy import StrategyConfig, add_signals, compute, fmt
 from .watchlist import Instrument, fetch_candles, make_config
@@ -58,6 +59,7 @@ class Result:
     rsi: Optional[float] = None
     st_up: Optional[bool] = None
     above_dema: Optional[bool] = None
+    sma_up: Optional[bool] = None                  # SMA 22 above SMA 33 on the latest candle
     blocked_by: list = field(default_factory=list)
     checks: dict = field(default_factory=dict)     # {"LONG": [Check], "SHORT": [Check]} on the latest candle
     snapshot: dict = field(default_factory=dict)
@@ -148,7 +150,8 @@ def analyse(ind: pd.DataFrame, inst: Instrument, cfg: StrategyConfig, lookback: 
     age_min = (now - (last_open + pd.Timedelta(minutes=CANDLE_MIN))).total_seconds() / 60
     r = Result(name=inst.name, group=inst.group, source=inst.source, last_candle=last_open,
                price=_f(last["close"]), rsi=_f(last["rsi"]), st_up=bool(last["st_dir"] == 1),
-               above_dema=bool(last["close"] > last["dema"]), stale=age_min > STALE_AFTER_MIN)
+               above_dema=bool(last["close"] > last["dema"]), sma_up=bool(last["sma_fast"] > last["sma_slow"]),
+               stale=age_min > STALE_AFTER_MIN)
     r.checks = {"LONG": checks_for(last, cfg, "LONG"), "SHORT": checks_for(last, cfg, "SHORT")}
     r.snapshot = _snapshot(ind)
     if r.stale and not ignore_stale:
@@ -218,7 +221,7 @@ def scan(insts: list[Instrument], flags: dict, lookback: int = 3, ignore_stale: 
 
     results: list[Result] = []
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(insts) or 1))) as ex:
-        futs = [ex.submit(work, i) for i in insts]
+        futs = [creds.submit(ex, work, i) for i in insts]
         for k, fu in enumerate(futs, 1):
             results.append(fu.result())
             if progress:

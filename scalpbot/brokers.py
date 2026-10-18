@@ -23,6 +23,7 @@ from urllib.parse import quote, unquote_plus, urlencode
 import pandas as pd
 import requests
 
+from . import creds
 from .data import OHLCV
 
 log = logging.getLogger("scalpbot.brokers")
@@ -58,7 +59,11 @@ _INSTR_CACHE: dict[str, list] = {}
 
 
 def upstox_token() -> str:
-    """Token file wins over the env var so a daily refresh needs no restart."""
+    """The signed-in portal user's token; otherwise the token file, which wins over the env var so a daily
+    refresh needs no restart."""
+    c = creds.current()
+    if c is not None:
+        return c.UPSTOX_ACCESS_TOKEN
     f = Path(os.getenv("UPSTOX_TOKEN_FILE", ".state/upstox_token.txt"))
     if f.exists():
         tok = f.read_text().strip()
@@ -231,7 +236,11 @@ def _cs_headers(method: str, path_with_query: str) -> tuple[dict, str]:
     """Ed25519 signature over METHOD + url-decoded path?query + epoch_ms (per CoinSwitch auth docs)."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-    api, secret = os.getenv("COINSWITCH_API_KEY", ""), os.getenv("COINSWITCH_SECRET_KEY", "")
+    c = creds.current()
+    if c is not None:
+        api, secret = c.COINSWITCH_API_KEY, c.COINSWITCH_SECRET_KEY
+    else:
+        api, secret = os.getenv("COINSWITCH_API_KEY", ""), os.getenv("COINSWITCH_SECRET_KEY", "")
     if not api or not secret:
         raise AuthExpired("COINSWITCH_API_KEY / COINSWITCH_SECRET_KEY not set")
     epoch = str(int(time.time() * 1000))
@@ -264,8 +273,10 @@ def _parse_cs(rows: list) -> pd.DataFrame:
 def _cs_klines(symbol: str, start_ms: int, end_ms: int, limit: int) -> pd.DataFrame:
     params = {"exchange": "EXCHANGE_2", "symbol": symbol, "interval": "5",
               "start_time": start_ms, "end_time": end_ms, "limit": limit}
+    path = "/trade/api/v2/futures/klines?" + urlencode(params)
+    _cs_headers("GET", path)            # fail fast on missing keys, before waiting on the shared limiter
     _cs_throttle()
-    headers, decoded = _cs_headers("GET", "/trade/api/v2/futures/klines?" + urlencode(params))
+    headers, decoded = _cs_headers("GET", path)
     r = requests.get(_cs_base() + decoded, headers=headers, timeout=20)
     if r.status_code in (401, 403):
         raise AuthExpired(f"CoinSwitch rejected the request (HTTP {r.status_code}): {r.text[:160]}")
