@@ -83,6 +83,18 @@ The same setup as wardwatch and eNagarparishad: GitHub holds the code, [Render](
 On the free plan the portal sleeps after ~15 idle minutes and the first visit after that takes ~30-60 s. Everything
 works on demand, including the Bull & Bear assistant; only the 5-minute **Alert bot** needs an always-on machine.
 
+### Landing page on GitHub Pages
+
+[`site/`](site/) is a static landing page (branding, features, Bull & Bear, how to join) whose **Open the portal**
+buttons go to the Render address. It also pings the portal on load, so a sleeping free instance starts waking up
+before anyone clicks. [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes it on every push that
+touches `site/`.
+
+1. Pages needs a **public** repo on a free GitHub plan (or GitHub Pro for a private one).
+2. Repo **Settings > Pages > Source: GitHub Actions**, then run the *Deploy landing page to GitHub Pages* workflow
+   (Actions tab) once. It appears at `https://<user>.github.io/<repo>/`.
+3. To point the buttons somewhere else (e.g. a custom domain), add an Actions variable `PORTAL_URL` and re-run it.
+
 ### Alternative: Streamlit Community Cloud
 
 GitHub holds the code; [Streamlit Community Cloud](https://share.streamlit.io) runs it (free, deploys from a public or private GitHub repo).

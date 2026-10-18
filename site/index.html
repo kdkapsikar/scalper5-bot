@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scalp5 · Bull or bear, every 5 minutes</title>
+<meta name="description" content="5-minute confluence signals and a Bull / Bear market mood for Indian index & F&O futures and crypto, from your own Upstox and CoinSwitch accounts.">
+<link rel="icon" href="mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f7fb; --card: #ffffff; --card2: #eef1f8; --text: #141a2b; --muted: #5f6880; --faint: #8a93a8;
+  --border: #e3e7f0; --brand: #4f5dff; --brand2: #3b2fd9; --bull: #16a34a; --bear: #e5484d;
+  --shadow: 0 1px 2px rgba(20,26,43,.04), 0 10px 30px rgba(20,26,43,.07);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1020; --card: #11182c; --card2: #151c31; --text: #e7eaf3; --muted: #9aa3ba; --faint: #6f7891;
+    --border: #232c47; --brand: #7c8bff; --brand2: #5b4dff; --bull: #22c55e; --bear: #f05252;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.3);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+h1, h2, h3 { font-family: "Space Grotesk", Inter, sans-serif; letter-spacing: -0.02em; line-height: 1.12; margin: 0; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+/* nav */
+nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom: 1px solid var(--border); }
+nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 1.2rem "Space Grotesk", sans-serif; text-decoration: none; }
+.brand img { width: 34px; height: 34px; }
+.navlinks { display: flex; align-items: center; gap: 22px; font-size: .92rem; color: var(--muted); }
+.navlinks a { text-decoration: none; } .navlinks a:hover { color: var(--text); }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px; font-weight: 600;
+  text-decoration: none; border: 1px solid var(--border); background: var(--card); transition: transform .12s, box-shadow .12s; }
+.btn:hover { transform: translateY(-1px); }
+.btn.primary { color: #fff; border: 0; background: linear-gradient(135deg, var(--brand), var(--brand2));
+  box-shadow: 0 10px 24px -10px var(--brand); }
+.btn.small { padding: 8px 14px; font-size: .9rem; border-radius: 10px; }
+
+/* hero */
+.hero { position: relative; overflow: hidden; color: #eef0ff;
+  background: radial-gradient(70% 90% at 100% 0%, rgba(124,139,255,.5) 0%, rgba(124,139,255,0) 60%),
+              radial-gradient(60% 70% at 0% 100%, rgba(34,197,94,.25) 0%, rgba(34,197,94,0) 60%),
+              linear-gradient(160deg, #141a3a 0%, #0b1020 100%); }
+.hero .wrap { display: grid; grid-template-columns: 1.25fr 1fr; gap: 40px; align-items: center; padding-top: 72px; padding-bottom: 80px; }
+.eyebrow { display: inline-flex; gap: 8px; align-items: center; font-size: .78rem; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: #aeb6ff; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+  padding: 6px 12px; border-radius: 999px; }
+.hero h1 { font-size: clamp(2.3rem, 5vw, 3.6rem); color: #fff; margin: 18px 0 16px; }
+.hero h1 span { background: linear-gradient(90deg, #5ff0a0, #9aa6ff 55%, #ff8a8f); -webkit-background-clip: text;
+  background-clip: text; color: transparent; }
+.hero p.lead { font-size: 1.12rem; color: #c4c9e6; max-width: 34rem; margin: 0 0 28px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.hero .btn:not(.primary) { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.14); color: #fff; }
+.status { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; font-size: .85rem; color: #aab1d6; }
+.status i { width: 8px; height: 8px; border-radius: 50%; background: #f5b83d; box-shadow: 0 0 0 0 rgba(245,184,61,.6);
+  animation: pulse 1.6s infinite; }
+.status.ready i { background: #22c55e; animation: none; box-shadow: 0 0 0 3px rgba(34,197,94,.25); }
+@keyframes pulse { 70% { box-shadow: 0 0 0 8px rgba(245,184,61,0) } 100% { box-shadow: 0 0 0 0 rgba(245,184,61,0) } }
+
+.stage { position: relative; display: flex; flex-direction: column; align-items: center; }
+.bubble { background: #fff; color: #141a2b; border-radius: 18px 18px 18px 6px; padding: 12px 16px; font-size: .95rem;
+  box-shadow: 0 20px 40px -18px rgba(0,0,0,.6); margin-bottom: 14px; max-width: 300px; align-self: flex-start; margin-left: 18%;
+  animation: pop .6s ease-out both .3s; }
+.bubble b.bull { color: #16a34a; } .bubble b.bear { color: #e5484d; }
+.duo { display: flex; align-items: flex-end; filter: drop-shadow(0 24px 30px rgba(0,0,0,.45)); }
+.duo .s5-m { width: 190px; height: 190px; }
+.duo .s5-bear { margin-left: -34px; transform: translateY(8px); }
+.ground { width: 330px; height: 22px; border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.45), transparent);
+  margin-top: -6px; }
+@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.96) } to { opacity: 1; transform: none } }
+
+/* mascot animation (same as the portal) */
+.s5-m { display: block; overflow: visible; }
+.s5-m .body { transform-origin: 60px 110px; animation: s5-bob 3.2s ease-in-out infinite; }
+.s5-bear .body { animation-delay: -1.6s; }
+.s5-m .eyes { transform-box: fill-box; transform-origin: center; animation: s5-blink 4.6s infinite; }
+.s5-bear .eyes { animation-delay: -2.1s; }
+.s5-m .ear { transform-box: fill-box; transform-origin: center bottom; animation: s5-wiggle 5.5s ease-in-out infinite; }
+.s5-m .ear.r { animation-delay: -.4s; }
+.s5-bull .ring { transform-box: fill-box; transform-origin: center top; animation: s5-swing 2.6s ease-in-out infinite; }
+@keyframes s5-bob { 0%,100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-5px) rotate(-1.5deg) } }
+@keyframes s5-blink { 0%,92%,100% { transform: scaleY(1) } 95% { transform: scaleY(.1) } }
+@keyframes s5-wiggle { 0%,80%,100% { transform: rotate(0) } 85% { transform: rotate(-9deg) } 90% { transform: rotate(7deg) } }
+@keyframes s5-swing { 0%,100% { transform: rotate(-8deg) } 50% { transform: rotate(8deg) } }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+
+/* sections */
+section { padding: 84px 0; }
+.head { max-width: 640px; margin-bottom: 36px; }
+.head .kicker { font-size: .78rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--brand); }
+.head h2 { font-size: clamp(1.8rem, 3.4vw, 2.4rem); margin: 8px 0 10px; }
+.head p { color: var(--muted); margin: 0; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 24px; box-shadow: var(--shadow); }
+.card .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 1.35rem;
+  background: color-mix(in srgb, var(--brand) 12%, transparent); margin-bottom: 14px; }
+.card h3 { font-size: 1.12rem; margin-bottom: 6px; }
+.card p { color: var(--muted); margin: 0; font-size: .95rem; }
+.card.bull { border-top: 4px solid var(--bull); } .card.bear { border-top: 4px solid var(--bear); }
+
+.chat { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+.msgs { display: grid; gap: 12px; }
+.msg { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow); font-size: .95rem; }
+.msg .av { width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--card2); display: grid; place-items: center; overflow: hidden; }
+.msg .av svg { width: 40px; height: 40px; }
+.msg.user { justify-self: end; background: color-mix(in srgb, var(--brand) 12%, var(--card)); max-width: 80%; }
+.msg b.up { color: var(--bull); } .msg b.dn { color: var(--bear); }
+.example { font-size: .78rem; color: var(--faint); margin-top: 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.chips span { font-size: .85rem; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); }
+
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: s; }
+.step { position: relative; padding: 24px 24px 24px 74px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 18px; box-shadow: var(--shadow); }
+.step::before { counter-increment: s; content: counter(s); position: absolute; left: 22px; top: 22px; width: 36px; height: 36px;
+  border-radius: 10px; display: grid; place-items: center; font: 700 1rem "Space Grotesk"; color: #fff;
+  background: linear-gradient(135deg, var(--brand), var(--brand2)); }
+.step h3 { font-size: 1.05rem; margin-bottom: 4px; } .step p { margin: 0; color: var(--muted); font-size: .94rem; }
+
+.cover { display: flex; flex-wrap: wrap; gap: 8px; }
+.cover span { font: 500 .85rem "JetBrains Mono", monospace; padding: 7px 12px; border-radius: 10px; background: var(--card);
+  border: 1px solid var(--border); }
+
+.final { text-align: center; background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 48px 24px;
+  box-shadow: var(--shadow); }
+.final h2 { font-size: clamp(1.7rem, 3vw, 2.2rem); margin-bottom: 10px; }
+.final p { color: var(--muted); margin: 0 0 24px; }
+footer { padding: 36px 0 48px; color: var(--faint); font-size: .85rem; border-top: 1px solid var(--border); }
+footer .wrap { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+footer p { margin: 0; max-width: 640px; }
+
+@media (max-width: 860px) {
+  .hero .wrap, .chat { grid-template-columns: 1fr; }
+  .stage { order: -1; } .duo .s5-m { width: 130px; height: 130px; } .ground { width: 230px; }
+  .bubble { margin-left: 0; align-self: center; }
+  .grid, .steps { grid-template-columns: 1fr; }
+  .navlinks a:not(.btn) { display: none; }
+  section { padding: 60px 0; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="mark.svg" alt="">Scalp5</a>
+    <div class="navlinks">
+      <a href="#features">Features</a>
+      <a href="#assistant">Bull &amp; Bear</a>
+      <a href="#start">Get started</a>
+      <a class="btn small primary portal-link" href="https://scalp5-portal.onrender.com/">Open the portal</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow">🐂 🐻 5-minute market desk</span>
+      <h1>Read the tape.<br><span>Bull or bear,</span> every 5 minutes.</h1>
+      <p class="lead">Confluence signals and a live Bull / Bear market mood for Indian index &amp; F&amp;O futures and crypto,
+        computed from <strong>your own</strong> Upstox and CoinSwitch accounts.</p>
+      <div class="cta">
+        <a class="btn primary portal-link" href="https://scalp5-portal.onrender.com/">Open the portal →</a>
+        <a class="btn" href="#start">How to join</a>
+      </div>
+      <div class="status" id="status"><i></i><span>Waking the portal up…</span></div>
+    </div>
+    <div class="stage">
+      <div class="bubble">Namaste! I'm <b class="bull">Bull</b>, and that's my cautious friend <b class="bear">Bear</b>. Ask us how the market looks.</div>
+      <div class="duo"><svg class="s5-m s5-bull" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-label="Bull">
+  <g class="body">
+    <path d="M28 98 Q60 120 92 98 L88 112 Q60 124 32 112 Z" fill="#16a34a"/>
+    <path d="M52 104 l8 -9 l8 9 Z" fill="#bbf7d0"/>
+    <g class="ear l"><ellipse cx="22" cy="52" rx="13" ry="7" fill="#8a4f24" transform="rotate(-20 22 52)"/>
+      <ellipse cx="22" cy="52" rx="8" ry="3.6" fill="#e9a77e" transform="rotate(-20 22 52)"/></g>
+    <g class="ear r"><ellipse cx="98" cy="52" rx="13" ry="7" fill="#8a4f24" transform="rotate(20 98 52)"/>
+      <ellipse cx="98" cy="52" rx="8" ry="3.6" fill="#e9a77e" transform="rotate(20 98 52)"/></g>
+    <path d="M34 40 Q14 34 12 12 Q24 26 40 30 Z" fill="#f4e6c8" stroke="#d9c39a" stroke-width="1.5"/>
+    <path d="M86 40 Q106 34 108 12 Q96 26 80 30 Z" fill="#f4e6c8" stroke="#d9c39a" stroke-width="1.5"/>
+    <path d="M30 46 Q30 24 60 24 Q90 24 90 46 L88 78 Q86 98 60 98 Q34 98 32 78 Z" fill="#9b5a2c"/>
+    <path d="M48 26 Q60 34 72 26 Q66 38 60 36 Q54 38 48 26 Z" fill="#6f3d1b"/>
+    <g class="eyes">
+      <ellipse cx="47" cy="54" rx="6.5" ry="7.5" fill="#fff"/><ellipse cx="73" cy="54" rx="6.5" ry="7.5" fill="#fff"/>
+      <circle cx="48" cy="55.5" r="3.6" fill="#1d1d24"/><circle cx="72" cy="55.5" r="3.6" fill="#1d1d24"/>
+      <circle cx="49.3" cy="54" r="1.2" fill="#fff"/><circle cx="73.3" cy="54" r="1.2" fill="#fff"/>
+    </g>
+    <path d="M40 46 q7 -5 14 -1" stroke="#5b3114" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <path d="M66 45 q7 -4 14 1" stroke="#5b3114" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <ellipse cx="60" cy="80" rx="22" ry="15" fill="#f0b996"/>
+    <ellipse cx="52" cy="79" rx="3.6" ry="4.6" fill="#7a3f22"/><ellipse cx="68" cy="79" rx="3.6" ry="4.6" fill="#7a3f22"/>
+    <path d="M52 89 Q60 94 68 89" stroke="#7a3f22" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <circle class="ring" cx="60" cy="94" r="6" fill="none" stroke="#f5b83d" stroke-width="2.6"/>
+  </g>
+</svg><svg class="s5-m s5-bear" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-label="Bear">
+  <g class="body">
+    <path d="M28 98 Q60 120 92 98 L88 112 Q60 124 32 112 Z" fill="#e5484d"/>
+    <path d="M52 96 l8 9 l8 -9 Z" fill="#fecaca"/>
+    <g class="ear l"><circle cx="30" cy="30" r="14" fill="#6b4226"/><circle cx="30" cy="30" r="7.5" fill="#c99a6e"/></g>
+    <g class="ear r"><circle cx="90" cy="30" r="14" fill="#6b4226"/><circle cx="90" cy="30" r="7.5" fill="#c99a6e"/></g>
+    <circle cx="60" cy="60" r="38" fill="#7b4b2a"/>
+    <g class="eyes">
+      <circle cx="46" cy="55" r="4.4" fill="#1d1d24"/><circle cx="74" cy="55" r="4.4" fill="#1d1d24"/>
+      <circle cx="47.4" cy="53.6" r="1.3" fill="#fff"/><circle cx="75.4" cy="53.6" r="1.3" fill="#fff"/>
+    </g>
+    <path d="M38 45 q8 3 15 1" stroke="#3f2414" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <path d="M67 46 q7 2 15 -1" stroke="#3f2414" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="60" cy="75" rx="18" ry="14" fill="#d9ab7f"/>
+    <path d="M53 69 Q60 64 67 69 Q66 75 60 76 Q54 75 53 69 Z" fill="#2a1a10"/>
+    <path d="M60 76 v5 M53 84 Q60 80 67 84" stroke="#2a1a10" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <ellipse cx="38" cy="70" rx="5" ry="3" fill="#e5484d" opacity=".25"/>
+    <ellipse cx="82" cy="70" rx="5" ry="3" fill="#e5484d" opacity=".25"/>
+  </g>
+</svg></div>
+      <div class="ground"></div>
+    </div>
+  </div>
+</header>
+
+<main>
+<section id="features">
+  <div class="wrap">
+    <div class="head">
+      <div class="kicker">What's inside</div>
+      <h2>Everything a 5-minute scalper checks, in one place</h2>
+      <p>One set of rules drives the scanner, the market mood, the assistant and the backtest, so they always agree.</p>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="ic">📡</div><h3>Scanner</h3>
+        <p>Scan every index and F&amp;O stock future plus crypto, or open one ticker with its checklist and chart.</p></div>
+      <div class="card bull"><div class="ic">🐂</div><h3>Market mood</h3>
+        <p>A score from -100 to +100 for India and crypto, built from 200 DEMA, Supertrend and SMA breadth, the leaders and RSI.</p></div>
+      <div class="card bear"><div class="ic">🐻</div><h3>Bull &amp; Bear assistant</h3>
+        <p>Two mascots on every page. Ask about the mood, live setups, any ticker or any indicator.</p></div>
+      <div class="card"><div class="ic">🧪</div><h3>Backtest</h3>
+        <p>Replay the rules on recent history with fees and slippage, and compare the trigger modes.</p></div>
+      <div class="card"><div class="ic">🔐</div><h3>Your accounts, your keys</h3>
+        <p>Everyone connects their own brokers. Keys are encrypted and only used for their own pages.</p></div>
+      <div class="card"><div class="ic">🛡️</div><h3>Invite-only access</h3>
+        <p>New sign-ups wait for the admin's approval, and every sign-in and admin action is logged.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="assistant" style="background: var(--card2)">
+  <div class="wrap chat">
+    <div>
+      <div class="head">
+        <div class="kicker">Meet Bull &amp; Bear</div>
+        <h2>Ask the market desk</h2>
+        <p>Bull is upbeat, Bear is cautious. Whichever matches the market leads the answer, and the other adds a caveat.
+          They describe what the rules see; they never place orders or give advice.</p>
+      </div>
+      <div class="chips"><span>🐂🐻 Market mood</span><span>⚡ Live signals</span><span>🔎 Check a ticker</span>
+        <span>📚 Explain</span><span>🔌 My connections</span></div>
+    </div>
+    <div>
+      <div class="msgs">
+        <div class="msg user">how is banknifty?</div>
+        <div class="msg"><div class="av"><svg class="s5-m s5-bear" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-label="Bear">
+  <g class="body">
+    <path d="M28 98 Q60 120 92 98 L88 112 Q60 124 32 112 Z" fill="#e5484d"/>
+    <path d="M52 96 l8 9 l8 -9 Z" fill="#fecaca"/>
+    <g class="ear l"><circle cx="30" cy="30" r="14" fill="#6b4226"/><circle cx="30" cy="30" r="7.5" fill="#c99a6e"/></g>
+    <g class="ear r"><circle cx="90" cy="30" r="14" fill="#6b4226"/><circle cx="90" cy="30" r="7.5" fill="#c99a6e"/></g>
+    <circle cx="60" cy="60" r="38" fill="#7b4b2a"/>
+    <g class="eyes">
+      <circle cx="46" cy="55" r="4.4" fill="#1d1d24"/><circle cx="74" cy="55" r="4.4" fill="#1d1d24"/>
+      <circle cx="47.4" cy="53.6" r="1.3" fill="#fff"/><circle cx="75.4" cy="53.6" r="1.3" fill="#fff"/>
+    </g>
+    <path d="M38 45 q8 3 15 1" stroke="#3f2414" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <path d="M67 46 q7 2 15 -1" stroke="#3f2414" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="60" cy="75" rx="18" ry="14" fill="#d9ab7f"/>
+    <path d="M53 69 Q60 64 67 69 Q66 75 60 76 Q54 75 53 69 Z" fill="#2a1a10"/>
+    <path d="M60 76 v5 M53 84 Q60 80 67 84" stroke="#2a1a10" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <ellipse cx="38" cy="70" rx="5" ry="3" fill="#e5484d" opacity=".25"/>
+    <ellipse cx="82" cy="70" rx="5" ry="3" fill="#e5484d" opacity=".25"/>
+  </g>
+</svg></div><div><b>BANKNIFTY FUT</b>: below the 200 DEMA, Supertrend
+          <b class="dn">down</b>, SMA 22 below 33, RSI 41. Leaning bearish.</div></div>
+        <div class="msg user">what is supertrend?</div>
+        <div class="msg"><div class="av"><svg class="s5-m s5-bull" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-label="Bull">
+  <g class="body">
+    <path d="M28 98 Q60 120 92 98 L88 112 Q60 124 32 112 Z" fill="#16a34a"/>
+    <path d="M52 104 l8 -9 l8 9 Z" fill="#bbf7d0"/>
+    <g class="ear l"><ellipse cx="22" cy="52" rx="13" ry="7" fill="#8a4f24" transform="rotate(-20 22 52)"/>
+      <ellipse cx="22" cy="52" rx="8" ry="3.6" fill="#e9a77e" transform="rotate(-20 22 52)"/></g>
+    <g class="ear r"><ellipse cx="98" cy="52" rx="13" ry="7" fill="#8a4f24" transform="rotate(20 98 52)"/>
+      <ellipse cx="98" cy="52" rx="8" ry="3.6" fill="#e9a77e" transform="rotate(20 98 52)"/></g>
+    <path d="M34 40 Q14 34 12 12 Q24 26 40 30 Z" fill="#f4e6c8" stroke="#d9c39a" stroke-width="1.5"/>
+    <path d="M86 40 Q106 34 108 12 Q96 26 80 30 Z" fill="#f4e6c8" stroke="#d9c39a" stroke-width="1.5"/>
+    <path d="M30 46 Q30 24 60 24 Q90 24 90 46 L88 78 Q86 98 60 98 Q34 98 32 78 Z" fill="#9b5a2c"/>
+    <path d="M48 26 Q60 34 72 26 Q66 38 60 36 Q54 38 48 26 Z" fill="#6f3d1b"/>
+    <g class="eyes">
+      <ellipse cx="47" cy="54" rx="6.5" ry="7.5" fill="#fff"/><ellipse cx="73" cy="54" rx="6.5" ry="7.5" fill="#fff"/>
+      <circle cx="48" cy="55.5" r="3.6" fill="#1d1d24"/><circle cx="72" cy="55.5" r="3.6" fill="#1d1d24"/>
+      <circle cx="49.3" cy="54" r="1.2" fill="#fff"/><circle cx="73.3" cy="54" r="1.2" fill="#fff"/>
+    </g>
+    <path d="M40 46 q7 -5 14 -1" stroke="#5b3114" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <path d="M66 45 q7 -4 14 1" stroke="#5b3114" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <ellipse cx="60" cy="80" rx="22" ry="15" fill="#f0b996"/>
+    <ellipse cx="52" cy="79" rx="3.6" ry="4.6" fill="#7a3f22"/><ellipse cx="68" cy="79" rx="3.6" ry="4.6" fill="#7a3f22"/>
+    <path d="M52 89 Q60 94 68 89" stroke="#7a3f22" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <circle class="ring" cx="60" cy="94" r="6" fill="none" stroke="#f5b83d" stroke-width="2.6"/>
+  </g>
+</svg></div><div><b>Supertrend (10, 3)</b>: a trailing line built from ATR.
+          When it flips <b class="up">up</b> the filter allows longs, when it flips down it allows shorts.</div></div>
+      </div>
+      <div class="example">Example conversation. Real answers use live data from your own accounts.</div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="head">
+      <div class="kicker">Get started</div>
+      <h2>Three steps to your desk</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><h3>Create an account</h3><p>Sign up on the portal with your email and a password.</p></div>
+      <div class="step"><h3>Wait for approval</h3><p>The admin reviews new accounts; you can sign in once approved.</p></div>
+      <div class="step"><h3>Connect your brokers</h3><p>Add your Upstox app and CoinSwitch keys on the Connect page, then ask Bull &amp; Bear.</p></div>
+    </div>
+    <div class="head" style="margin: 56px 0 18px"><div class="kicker">Covers</div></div>
+    <div class="cover"><span>NIFTY</span><span>BANKNIFTY</span><span>FINNIFTY</span><span>MIDCPNIFTY</span><span>NIFTYNXT50</span>
+      <span>200+ F&amp;O stock futures</span><span>BTCUSDT</span><span>ETHUSDT</span><span>PAXGUSDT</span><span>XAUUSDT</span></div>
+  </div>
+</section>
+
+<section style="padding-top: 0">
+  <div class="wrap">
+    <div class="final">
+      <h2>Ready to read the tape?</h2>
+      <p>The first visit after a quiet spell takes up to a minute while the portal wakes up.</p>
+      <a class="btn primary portal-link" href="https://scalp5-portal.onrender.com/">Open the portal →</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="mark.svg" alt="">Scalp5</a>
+    <p>Analysis only. Scalp5 never places orders, and nothing here is financial advice. Trading futures and crypto carries
+      substantial risk; backtest and paper-trade before risking money.</p>
+  </div>
+</footer>
+
+<script>
+// Render's free plan sleeps when idle: start waking the portal as soon as someone lands here, so it is ready by the
+// time they click. An opaque (no-cors) response is enough to know the server answered.
+(function () {
+  var portal = "https://scalp5-portal.onrender.com/".replace(/\/+$/, "");
+  var el = document.getElementById("status");
+  var label = el.querySelector("span");
+  var done = false;
+  function ready() { done = true; el.classList.add("ready"); label.textContent = "Portal is awake and ready"; }
+  function ping(n) {
+    fetch(portal + "/_stcore/health", { mode: "no-cors", cache: "no-store" }).then(ready).catch(function () {
+      if (n < 6) setTimeout(function () { ping(n + 1); }, 5000);
+      else label.textContent = "The portal is taking a while; it opens as soon as it's up";
+    });
+  }
+  setTimeout(function () { if (!done) label.textContent = "Waking the portal up (free hosting sleeps when idle)…"; }, 4000);
+  ping(0);
+})();
+</script>
+</body>
+</html>
