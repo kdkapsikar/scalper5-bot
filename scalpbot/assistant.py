@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from .scan import stale_text
 from .strategy import fmt
 
 BULL, BEAR = "bull", "bear"
@@ -188,8 +189,10 @@ def reply_mood(moods: dict) -> list[Msg]:
     other = BEAR if lead == BULL else BULL
     caveat = ("Moods turn fast on 5-minute charts. Wait for a closed-candle signal and respect the stop. 🐻"
               if other == BEAR else "Bears get caught when breadth flips: watch the leader for a turn. 🐂")
-    if any(m.stale for m in measured):
-        caveat = "Some markets look closed, so part of this is the last session. " + caveat
+    if any(m.stale for m in measured if m.market == "Crypto"):
+        caveat = "Some crypto candles are arriving late from the broker, so that part may lag a little. " + caveat
+    if any(m.stale for m in measured if m.market != "Crypto"):
+        caveat = "Indian futures look closed, so that part is the last session. " + caveat
     out.append(Msg(other, caveat))
     return out
 
@@ -243,7 +246,7 @@ def reply_ticker(res, lookback: int) -> list[Msg]:
     lean = {3: "Fully bullish structure. 🐂", 2: "Leaning bullish. 🐂", 1: "Leaning bearish. 🐻", 0: "Fully bearish structure. 🐻"}[trend_up]
     out = [Msg(who, f"**{res.name}**: " + ", ".join(facts) + f". {lean}")]
     if res.stale:
-        out.append(Msg(BEAR, "Its market looks closed right now, so this is the last session."))
+        out.append(Msg(BEAR, stale_text(res) + " So this may not be current."))
     if res.status in ("LONG", "SHORT"):
         side_who = BULL if res.status == "LONG" else BEAR
         t = f"{'🟢' if res.status == 'LONG' else '🔴'} **{res.status}** signal ({res.trigger}), {res.age} candle(s) ago at {fmt(res.signal_price)}"

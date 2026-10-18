@@ -35,7 +35,7 @@ class Mood:
     icon: str = "❔"
     n: int = 0                             # instruments measured
     errors: int = 0
-    stale: int = 0                         # measured instruments whose market looks closed
+    stale: int = 0                         # measured instruments without fresh candles (closed, or crypto feed delayed)
     components: dict = field(default_factory=dict)   # name -> value in -1..+1
     facts: list = field(default_factory=list)        # plain-language reasons
 
@@ -122,7 +122,10 @@ def market_mood(results: list, market: str) -> Mood:
     m.label, m.icon = label_for(m.score)
     if m.n < 10 and market == "India":
         m.facts.append(f"Based on only {m.n} instruments: add stock futures for a broader read.")
-    if m.stale:
+    if m.stale and market == "Crypto":
+        m.facts.append(f"{m.stale} of {m.n} have delayed data from the broker (newest candle over 12 minutes old), "
+                       "so their part of the score is not fully current.")
+    elif m.stale:
         m.facts.append(f"{m.stale} of {m.n} markets look closed, so part of this reflects the last session.")
     return m
 

@@ -18,7 +18,7 @@ import pandas as pd
 import requests
 
 from .bot import CANDLE_MIN, DISPLAY_TZ
-from .brokers import AuthExpired
+from .brokers import FILL_INFO, AuthExpired
 from .watchlist import Instrument, fetch_candles
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -107,6 +107,9 @@ def check_instruments(insts: list[Instrument], candles: int = 1000) -> pd.DataFr
             row["Candles"] = len(df)
             row["Last closed candle (IST)"] = f"{last.tz_convert(DISPLAY_TZ):%d %b %H:%M}"
             note = "OK" if len(df) >= 300 else f"OK, but only {len(df)} candles (indicators need ~300)"
+            fill = FILL_INFO.get(inst.symbol) if inst.source == "coinswitch" else None
+            if fill and fill["candles"]:
+                note += f" (latest {fill['candles']} candle{'s' if fill['candles'] != 1 else ''} from {fill['provider'].title()}: CoinSwitch's history was behind)"
             if age > 120:
                 note += f" (market closed? {age / 60:.1f}h old)"
             elif age > 12:

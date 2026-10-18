@@ -255,11 +255,42 @@ def to_frame(results: list[Result], statuses=("LONG", "SHORT")) -> pd.DataFrame:
     return df.sort_values(["Candles ago", "Ticker"], kind="stable").reset_index(drop=True) if not df.empty else df
 
 
+ALWAYS_OPEN_SOURCES = ("coinswitch", "binance")
+
+
+def always_open(res: Result) -> bool:
+    """Crypto trades 24/7: an old last candle there means the broker's candle feed is behind, not a closed market."""
+    return res.source in ALWAYS_OPEN_SOURCES or res.group == "Crypto"
+
+
+def data_age_min(res: Result, now: Optional[pd.Timestamp] = None) -> Optional[float]:
+    """Minutes since the last closed candle ended."""
+    if res.last_candle is None:
+        return None
+    now = now or pd.Timestamp.now(tz="UTC")
+    return (now - (res.last_candle + pd.Timedelta(minutes=CANDLE_MIN))).total_seconds() / 60
+
+
+def _age_text(minutes: Optional[float]) -> str:
+    if minutes is None:
+        return "an unknown time"
+    return f"{minutes:.0f} min" if minutes < 120 else f"{minutes / 60:.1f} h"
+
+
+def stale_text(res: Result, now: Optional[pd.Timestamp] = None) -> str:
+    """Why an instrument has no fresh candles, in words: a closed market, or (crypto) a delayed broker feed."""
+    age = _age_text(data_age_min(res, now))
+    if always_open(res):
+        return (f"Data delayed: the broker's newest closed candle is {age} old. Crypto trades 24/7, so this is a "
+                "delay in the broker's candle feed, not a closed market.")
+    return f"Market closed or no fresh candles: the newest closed candle is {age} old."
+
+
 def headline(res: Result, lookback: int) -> str:
     if res.status == "ERROR":
         return f"Error: {res.error}"
     if res.status == "STALE":
-        return "Market closed or no fresh candles."
+        return stale_text(res)
     if res.status in ("LONG", "SHORT", "BLOCKED"):
         t = res.signal_close.tz_convert(IST)
         when = f"{_ago(res.age)} (closed {t:%H:%M} IST)"
@@ -318,7 +349,7 @@ def main(argv=None) -> int:
         print(f"\n{res.name} ({res.group})\n{headline(res, a.lookback)}")
         if res.status != "ERROR":
             if res.stale:
-                print("! last closed candle is old: market looks closed, showing the last session")
+                print("! " + stale_text(res) + " Showing the latest data available.")
             for side in ("LONG", "SHORT"):
                 print(f"\n{side} checklist on the latest closed candle:")
                 print(checks_frame(res.checks[side]).to_string(index=False))
@@ -335,7 +366,7 @@ def main(argv=None) -> int:
     from collections import Counter
     c = Counter(r.status for r in results)
     print(f"Scanned {len(results)}: {c['LONG']} long, {c['SHORT']} short, {c['BLOCKED']} blocked, "
-          f"{c['STALE']} market closed, {c['ERROR']} errors (look-back {a.lookback} candles)\n")
+          f"{c['STALE']} closed or delayed, {c['ERROR']} errors (look-back {a.lookback} candles)\n")
     shown = to_frame(results, ("LONG", "SHORT", "BLOCKED") if a.show_blocked else ("LONG", "SHORT"))
     print(shown.to_string(index=False) if not shown.empty else "No instrument satisfies all conditions.")
     errs = [r for r in results if r.status == "ERROR"]

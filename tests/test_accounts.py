@@ -175,7 +175,9 @@ def test_mood_ignores_errors_and_other_markets_and_flags_closed():
     rs = [_r("BTCUSDT", "Crypto", True, stale=True), Result(name="ETHUSDT", group="Crypto", status="ERROR", error="x"),
           _r("NIFTY FUT", "Index futures", False)]
     m = market_mood(rs, "Crypto")
-    assert m.n == 1 and m.errors == 1 and m.stale == 1 and any("closed" in f for f in m.facts)
+    assert m.n == 1 and m.errors == 1 and m.stale == 1 and any("delayed data" in f for f in m.facts)
+    india = market_mood([_r("NIFTY FUT", "Index futures", True, stale=True)], "India")
+    assert any("look closed" in f for f in india.facts)
     empty = market_mood([Result(name="ETHUSDT", group="Crypto", status="ERROR")], "Crypto")
     assert empty.score is None and empty.label == "No data"
 

@@ -276,7 +276,7 @@ def test_app_scan_all_mode(app):
     m = {re.sub(r":\w+\[(.*)\]", r"\1", x.label): x.value for x in app.metric}   # labels may carry colour markup
     assert m["Scanned"] == "8"                       # 2 index + 2 stock futures + 4 crypto
     assert m["Errors"] == "4"                        # crypto keys are "missing" in this fake
-    assert int(m["Long"]) + int(m["Short"]) + int(m["Blocked"]) + int(m["Market closed"]) + 4 <= 8
+    assert int(m["Long"]) + int(m["Short"]) + int(m["Blocked"]) + int(m["Closed / delayed"]) + 4 <= 8
 
 
 def test_app_universe_filter_and_single_ticker(app):
@@ -299,3 +299,16 @@ def test_app_single_ticker_error_is_shown(app):
     app.selectbox(key="ticker").select("BTCUSDT").run()
     assert not app.exception
     assert any("keys missing" in e.value for e in app.error)
+
+
+def test_stale_crypto_is_a_data_delay_not_a_closed_market():
+    now = pd.Timestamp("2026-10-18 14:34", tz="UTC")
+    last_open = pd.Timestamp("2026-10-18 13:55", tz="UTC")              # candle ended 14:00 -> 34 min old
+    btc = sc.Result(name="BTCUSDT", group="Crypto", source="coinswitch", status="STALE", stale=True, last_candle=last_open)
+    nifty = sc.Result(name="NIFTY FUT", group="Index futures", source="upstox", status="STALE", stale=True,
+                      last_candle=last_open)
+    assert sc.always_open(btc) and not sc.always_open(nifty)
+    assert sc.data_age_min(btc, now) == pytest.approx(34)
+    t = sc.stale_text(btc, now)
+    assert t.startswith("Data delayed") and "34 min" in t and "not a closed market" in t
+    assert sc.stale_text(nifty, now).startswith("Market closed")

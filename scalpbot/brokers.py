@@ -312,5 +312,74 @@ def fetch_coinswitch(symbol: str, n: int = 1000, window: int = 500) -> pd.DataFr
         if not frames:
             raise RuntimeError(f"CoinSwitch returned no candles for {sym}: check the symbol exists on EXCHANGE_2 futures")
         df = _merge(*frames)
-    _CS_CACHE[sym] = df.tail(2 * n)
-    return df.tail(n)
+    _CS_CACHE[sym] = df.tail(2 * n)          # CoinSwitch's own candles only: filled ones are never cached
+    return fill_recent(sym, df).tail(n)
+
+
+# =========================================================================== real-time gap fill for crypto
+# CoinSwitch publishes 5-minute futures candles in batches, so its history runs 7-37 minutes behind the live market
+# (measured 2026-10-18). Its EXCHANGE_2 futures carry Bybit's prices (identical closes and volume on every shared
+# candle), so the missing recent candles are filled from Bybit's public, real-time kline API; Binance USDT-M futures
+# is the backup (a few bps apart). Filled candles are never cached, so CoinSwitch's own replace them once published.
+FILL_PROVIDERS = {
+    "bybit": ("https://api.bybit.com", "https://api.bytick.com"),
+    "binance": ("https://fapi.binance.com",),
+}
+FILL_INFO: dict[str, dict] = {}       # symbol -> {"candles": n, "provider": name, "at": epoch s}; read by the UI
+
+
+def _fill_order() -> list[str]:
+    raw = os.getenv("SCALP_CRYPTO_FILL", "bybit,binance").strip().lower()
+    return [] if raw in ("", "off", "none", "0") else [x.strip() for x in raw.split(",") if x.strip() in FILL_PROVIDERS]
+
+
+def _public_klines(provider: str, symbol: str, start_ms: int, limit: int) -> pd.DataFrame:
+    for host in FILL_PROVIDERS[provider]:
+        try:
+            if provider == "bybit":
+                r = requests.get(host + "/v5/market/kline", timeout=6, params={
+                    "category": "linear", "symbol": symbol, "interval": "5", "start": start_ms, "limit": limit})
+                r.raise_for_status()
+                js = r.json()
+                if js.get("retCode") != 0:
+                    raise RuntimeError(js.get("retMsg"))
+                rows = [[int(x[0]), *map(float, x[1:6])] for x in js["result"]["list"]]
+            else:
+                r = requests.get(host + "/fapi/v1/klines", timeout=6, params={
+                    "symbol": symbol, "interval": "5m", "startTime": start_ms, "limit": limit})
+                r.raise_for_status()
+                rows = [[int(x[0]), *map(float, x[1:6])] for x in r.json()]
+            if not rows:
+                return _empty()
+            df = pd.DataFrame(rows, columns=["time"] + OHLCV)
+            out = df[OHLCV]
+            out.index = pd.DatetimeIndex(pd.to_datetime(df["time"], unit="ms", utc=True))
+            return out.sort_index()
+        except Exception as e:                      # next host / provider
+            log.debug("%s %s klines failed on %s: %s", provider, symbol, host, e)
+    raise RuntimeError(f"{provider} unreachable")
+
+
+def fill_recent(symbol: str, df: pd.DataFrame, now_ms: int | None = None) -> pd.DataFrame:
+    """Append the 5-minute candles CoinSwitch hasn't published yet (including the forming one, which callers drop)."""
+    FILL_INFO.pop(symbol, None)
+    if df.empty:
+        return df
+    now_ms = now_ms or int(time.time() * 1000)
+    last_ms = int(df.index[-1].timestamp() * 1000)
+    missing = (now_ms - last_ms) // CANDLE_MS          # candles after the last one CoinSwitch has (incl. forming)
+    if missing < 2:                                    # only the forming candle is missing: nothing to fill
+        return df
+    for provider in _fill_order():
+        try:
+            new = _public_klines(provider, symbol, last_ms + CANDLE_MS, int(min(missing + 1, 200)))
+        except Exception as e:
+            log.info("Gap fill for %s via %s failed: %s", symbol, provider, e)
+            continue
+        new = new[new.index > df.index[-1]]
+        if new.empty:
+            continue
+        closed = int(((new.index + pd.Timedelta(milliseconds=CANDLE_MS)) <= pd.Timestamp(now_ms, unit="ms", tz="UTC")).sum())
+        FILL_INFO[symbol] = {"candles": closed, "provider": provider, "at": time.time()}
+        return _merge(df, new)
+    return df

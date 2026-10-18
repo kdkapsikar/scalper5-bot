@@ -8,8 +8,10 @@ from scalpbot.creds import FIELDS
 
 
 @pytest.fixture(autouse=True)
-def _reset_creds_mode():
-    """The portal switches the process to strict multi-user mode; keep that from leaking into CLI tests."""
+def _reset_creds_mode(monkeypatch):
+    """The portal switches the process to strict multi-user mode; keep that from leaking into CLI tests.
+    Also: no real network calls to Bybit/Binance from the crypto gap fill unless a test turns it on."""
+    monkeypatch.setenv("SCALP_CRYPTO_FILL", "off")
     yield
     creds._STRICT[0] = False
     creds.activate(None)

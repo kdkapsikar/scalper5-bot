@@ -12,6 +12,7 @@ import streamlit as st
 
 from scalpbot import assistant as A
 from scalpbot import creds
+from scalpbot import scan as sc
 from scalpbot.mood import all_moods
 
 from portal import mascots, ui
@@ -71,8 +72,13 @@ def _answer(kind: str, arg) -> None:
             results, _ = measure(QUICK_GROUPS)
         live = [r for r in results if not r.stale]
         if results and not live:
-            _say([A.Msg(A.BEAR, "All these markets look closed right now, so there's nothing live to flag. 🐻 "
-                                "The Scanner page can review the last session (*Include closed markets*).")])
+            closed = sum(1 for r in results if r.stale and not sc.always_open(r))
+            delayed = sum(1 for r in results if r.stale and sc.always_open(r))
+            why = " and ".join(x for x in (
+                "Indian futures are closed" if closed else "",
+                f"the broker's crypto candles are running late ({delayed} symbol{'s' if delayed != 1 else ''})" if delayed else "") if x)
+            _say([A.Msg(A.BEAR, f"Nothing live to flag: {why}. 🐻 The Scanner page can still show the latest data "
+                                "(*Include closed markets*).")])
         else:
             _say(A.reply_signals(live, 3, "index futures and crypto"))
             _say([A.Msg(A.BULL, "For every F&O stock future, run **Scan all** on the Scanner page. 🐂")])

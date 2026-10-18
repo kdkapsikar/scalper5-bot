@@ -271,7 +271,7 @@ def mood_card(market: str, m) -> None:
         body = '<ul class="s5-facts">' + "".join(f"<li><span>›</span>{esc(f)}</li>" for f in m.facts) + "</ul>"
     meta = pill(f"{m.n} measured", "")
     if m.stale:
-        meta += pill(f"{m.stale} closed", "warn")
+        meta += pill(f"{m.stale} {'delayed' if market == 'Crypto' else 'closed'}", "warn")
     if m.errors:
         meta += pill(f"{m.errors} failed", "bear")
     st.markdown(f"""

@@ -357,3 +357,79 @@ def test_upstox_retries_on_rate_limit(monkeypatch, tmp_path):
     monkeypatch.setattr(brokers.requests, "get", fake_get)
     assert len(brokers.fetch_upstox("NSE_FO|2")) == 1
     assert calls["n"] == 3        # 429 then success for history, then intraday
+
+
+# --------------------------------------------------------------------------- crypto gap fill (CoinSwitch is behind)
+class _Resp:
+    def __init__(self, js, ok=True):
+        self._js, self.ok, self.status_code = js, ok, 200 if ok else 503
+
+    def json(self):
+        return self._js
+
+    def raise_for_status(self):
+        if not self.ok:
+            raise RuntimeError("HTTP 503")
+
+
+def _cs_frame(last_open: "pd.Timestamp", n: int = 20) -> "pd.DataFrame":
+    idx = pd.date_range(end=last_open, periods=n, freq="5min")
+    return pd.DataFrame({"open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 10.0}, index=idx)
+
+
+def _bybit_rows(start: "pd.Timestamp", k: int) -> list:
+    # Bybit lists newest first: [start ms, open, high, low, close, volume, turnover]
+    return [[str(int((start + pd.Timedelta(minutes=5 * i)).timestamp() * 1000)), "3", "4", "2", "3.5", "7", "0"]
+            for i in range(k)][::-1]
+
+
+def test_fill_recent_appends_missing_candles_from_bybit(monkeypatch):
+    from scalpbot import brokers as b
+    now = pd.Timestamp("2026-10-18 14:49:00", tz="UTC")
+    df = _cs_frame(pd.Timestamp("2026-10-18 14:25", tz="UTC"))      # CoinSwitch stops at 14:25 (24 min behind)
+    seen = {}
+
+    def fake_get(url, params=None, timeout=None):
+        seen.update(url=url, params=params)
+        return _Resp({"retCode": 0, "result": {"list": _bybit_rows(pd.Timestamp("2026-10-18 14:30", tz="UTC"), 4)}})
+
+    monkeypatch.setattr(b.requests, "get", fake_get)
+    monkeypatch.delenv("SCALP_CRYPTO_FILL", raising=False)                     # default order: bybit, then binance
+    out = b.fill_recent("BTCUSDT", df, int(now.timestamp() * 1000))
+    assert "api.bybit.com/v5/market/kline" in seen["url"] and seen["params"]["category"] == "linear"
+    assert out.index[-1] == pd.Timestamp("2026-10-18 14:45", tz="UTC")          # 14:30, 14:35, 14:40 closed + forming
+    assert out.loc["2026-10-18 14:25+00:00", "close"] == 1.5                     # CoinSwitch's own candles untouched
+    assert b.FILL_INFO["BTCUSDT"] == {"candles": 3, "provider": "bybit", "at": b.FILL_INFO["BTCUSDT"]["at"]}
+
+
+def test_fill_recent_falls_back_to_binance_then_gives_up_quietly(monkeypatch):
+    from scalpbot import brokers as b
+    now = pd.Timestamp("2026-10-18 14:49:00", tz="UTC")
+    df = _cs_frame(pd.Timestamp("2026-10-18 14:25", tz="UTC"))
+    start = int(pd.Timestamp("2026-10-18 14:30", tz="UTC").timestamp() * 1000)
+
+    def fake_get(url, params=None, timeout=None):
+        if "bybit" in url or "bytick" in url:
+            return _Resp({}, ok=False)                                            # e.g. blocked in this region
+        return _Resp([[start + 300000 * i, "3", "4", "2", "3.5", "7"] for i in range(4)])
+
+    monkeypatch.setattr(b.requests, "get", fake_get)
+    monkeypatch.setenv("SCALP_CRYPTO_FILL", "bybit,binance")
+    out = b.fill_recent("ETHUSDT", df, int(now.timestamp() * 1000))
+    assert b.FILL_INFO["ETHUSDT"]["provider"] == "binance" and len(out) == len(df) + 4
+
+    monkeypatch.setattr(b.requests, "get", lambda *a, **k: _Resp({}, ok=False))   # everything down
+    out = b.fill_recent("ETHUSDT", df, int(now.timestamp() * 1000))
+    assert out.equals(df) and "ETHUSDT" not in b.FILL_INFO
+
+
+def test_fill_recent_skips_when_fresh_or_disabled(monkeypatch):
+    from scalpbot import brokers as b
+    calls = []
+    monkeypatch.setattr(b.requests, "get", lambda *a, **k: calls.append(1))
+    monkeypatch.setenv("SCALP_CRYPTO_FILL", "bybit,binance")
+    df = _cs_frame(pd.Timestamp("2026-10-18 14:40", tz="UTC"))
+    assert b.fill_recent("BTCUSDT", df, int(pd.Timestamp("2026-10-18 14:47", tz="UTC").timestamp() * 1000)) is df
+    monkeypatch.setenv("SCALP_CRYPTO_FILL", "off")
+    assert b.fill_recent("BTCUSDT", df, int(pd.Timestamp("2026-10-18 15:47", tz="UTC").timestamp() * 1000)) is df
+    assert calls == []

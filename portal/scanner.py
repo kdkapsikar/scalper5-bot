@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from scalpbot import scan as sc
+from scalpbot.brokers import FILL_INFO
 from scalpbot.chart import make_chart
 from scalpbot.strategy import fmt
 from scalpbot.universe import GROUPS
@@ -57,8 +58,12 @@ def render_detail(inst) -> None:
         return
     if res.stale:
         last = res.last_candle.tz_convert(sc.IST)
-        st.warning(f"The market looks closed: the last closed candle is {last:%d %b %H:%M} IST (5-minute candle open). "
-                   "Showing the last session.")
+        st.warning(sc.stale_text(res) + f" Last candle opened {last:%d %b %H:%M} IST; showing the latest data available.")
+    fill = FILL_INFO.get(inst.symbol) if inst.source == "coinswitch" else None
+    if fill and fill["candles"]:
+        st.caption(f"⏱️ CoinSwitch's candle history was behind, so the latest {fill['candles']} closed "
+                   f"candle{'s' if fill['candles'] != 1 else ''} came from {fill['provider'].title()}'s real-time feed "
+                   "(the same market CoinSwitch quotes).")
     text = sc.headline(res, lookback)
     if res.status in ("LONG", "SHORT"):
         (st.success if res.status == "LONG" else st.error)(text)
@@ -114,7 +119,7 @@ if mode == "Scan all":
         results = data["results"]
         cnt = Counter(r.status for r in results)
         cols = st.columns(6)
-        for col, label, value in zip(cols, ["Scanned", ":green[Long]", ":red[Short]", ":orange[Blocked]", "Market closed", "Errors"],
+        for col, label, value in zip(cols, ["Scanned", ":green[Long]", ":red[Short]", ":orange[Blocked]", "Closed / delayed", "Errors"],
                                      [len(results), cnt["LONG"], cnt["SHORT"], cnt["BLOCKED"], cnt["STALE"], cnt["ERROR"]]):
             col.metric(label, value)
         if results and cnt["ERROR"] == len(results):
@@ -140,8 +145,9 @@ if mode == "Scan all":
                 st.dataframe(near, hide_index=True)
 
         if cnt["STALE"]:
-            with st.expander(f"{cnt['STALE']} instruments skipped because their market looks closed"):
-                st.write(", ".join(r.name for r in results if r.status == "STALE"))
+            with st.expander(f"{cnt['STALE']} instruments skipped: market closed or data delayed"):
+                st.dataframe(pd.DataFrame([{"Ticker": r.name, "Why": sc.stale_text(r)}
+                                           for r in results if r.status == "STALE"]), hide_index=True)
         if cnt["ERROR"]:
             with st.expander(f"{cnt['ERROR']} instruments failed"):
                 st.dataframe(pd.DataFrame([{"Ticker": r.name, "Error": r.error} for r in results if r.status == "ERROR"]),

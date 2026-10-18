@@ -197,6 +197,12 @@ Add `--dema-cross off|fast|both` to compare trigger modes. Entry is at the next 
 - Pivot "day" is Asia/Kolkata for Upstox and UTC for CoinSwitch (override with `tz:` on a custom entry).
 - Upstox rate limits: the adapter uses one global limiter (`UPSTOX_MAX_RPS`, default 5 per second), retries on HTTP 429, and caches each contract's history for the day so a cycle only re-fetches today's candles.
 - CoinSwitch klines are limited to 30 requests per 60 s; the adapter backfills once, then fetches only new candles.
+- CoinSwitch publishes 5-minute candles in batches, so its candle history runs about 7-37 minutes behind the live
+  market (measured October 2026). Its futures carry Bybit's prices (identical closes and volume), so the adapter fills
+  the missing recent candles from Bybit's public real-time API, with Binance USDT-M futures as a backup. Filled
+  candles are never cached (CoinSwitch's own replace them once published) and the Scanner and Connect test say when
+  they were used. `SCALP_CRYPTO_FILL=off` disables it; if every source is behind, crypto shows **data delayed**
+  (crypto never "closes").
 - Instrument-file field names (`underlying_symbol`, `underlying_type`, `expiry`) follow Upstox's documentation; if futures don't appear, `python -m scalpbot.check` shows a warning.
 - Each instrument needs about 300+ candles for the 200 DEMA; about 20 days of history is loaded for Upstox.
 
