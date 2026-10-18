@@ -6,7 +6,7 @@ import streamlit as st
 from scalpbot.accounts import MIN_PASSWORD, AccountError
 
 from portal import ui
-from portal.auth import accounts, current_user
+from portal.auth import accounts, current_user, sign_in
 
 acc = accounts()
 user = current_user()
@@ -28,7 +28,8 @@ with st.form("pw"):
             st.error("The two new passwords don't match.")
         else:
             try:
-                acc.change_password(user.id, old, new)
-                st.success("Password changed.")
+                acc.change_password(user.id, old, new)      # signs out every device...
+                sign_in(user)                               # ...except this one
+                st.success("Password changed. You've been signed out on your other devices.")
             except AccountError as e:
                 st.error(str(e))

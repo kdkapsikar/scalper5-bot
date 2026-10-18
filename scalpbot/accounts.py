@@ -10,6 +10,8 @@ Security model
   - Sign-ups start as "pending" until an admin approves them. Emails listed in ADMIN_EMAILS become admins on sign-up
     (on a local SQLite install without ADMIN_EMAILS, the first account becomes the admin).
   - Five wrong passwords lock the account for 15 minutes.
+  - "Stay signed in" sessions: a random token in a browser cookie; only its sha256 is stored. They expire after
+    SESSION_DAYS without use, and signing out, a password change, disabling or deleting the user revokes them.
 """
 from __future__ import annotations
 
@@ -35,6 +37,7 @@ MIN_PASSWORD = 10
 MAX_FAILED = 5
 LOCK_MINUTES = 15
 STATE_TTL_MIN = 15          # Upstox login "state" values expire after this long
+SESSION_DAYS = 7            # "stay signed in": a session lasts this long after its last use
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 meta = MetaData()
@@ -63,6 +66,13 @@ login_states = Table(
     Column("state", String(64), primary_key=True),
     Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+)
+sessions = Table(
+    "sessions", meta,
+    Column("token_hash", String(64), primary_key=True),    # sha256 of the cookie token; the token itself is never stored
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen", DateTime(timezone=True), nullable=False),
 )
 audit = Table(
     "audit", meta,
@@ -153,7 +163,9 @@ class Accounts:
         elif url.startswith("postgresql://"):
             url = "postgresql+psycopg://" + url[len("postgresql://"):]
         self.is_sqlite = url.startswith("sqlite")
-        self.engine: Engine = create_engine(url, pool_pre_ping=True, future=True)
+        # Recycle connections before managed Postgres drops idle ones (Neon suspends after ~5 idle minutes);
+        # pre-ping catches any that died anyway. The portal caches the signed-in user, so this is rarely hit.
+        self.engine: Engine = create_engine(url, pool_pre_ping=True, pool_recycle=240, future=True)
         meta.create_all(self.engine)
         self._fernet = Fernet(self._master_key(master_key, state).encode())
         raw = admin_emails if admin_emails is not None else os.getenv("ADMIN_EMAILS", "")
@@ -268,6 +280,7 @@ class Accounts:
                 raise AccountError("Your current password is not correct.")
             check_password_rules(new)
             c.execute(update(users).where(users.c.id == user_id).values(password_hash=hash_password(new)))
+            c.execute(delete(sessions).where(sessions.c.user_id == user_id))   # sign out every other device
         self.log("password_changed", row.email, row.email)
 
     # ----------------------------------------------------------------------- admin actions
@@ -281,6 +294,8 @@ class Accounts:
             raise AccountError("You can't disable or demote your own account.")
         with self.engine.begin() as c:
             c.execute(update(users).where(users.c.id == user_id).values(**vals))
+            if vals.get("status", "active") != "active":
+                c.execute(delete(sessions).where(sessions.c.user_id == user_id))
         self.log(action, admin.email, target.email, ", ".join(f"{k}={v}" for k, v in vals.items()))
         return self.get(user_id)
 
@@ -309,8 +324,53 @@ class Accounts:
         with self.engine.begin() as c:
             c.execute(delete(credentials).where(credentials.c.user_id == user_id))
             c.execute(delete(login_states).where(login_states.c.user_id == user_id))
+            c.execute(delete(sessions).where(sessions.c.user_id == user_id))
             c.execute(delete(users).where(users.c.id == user_id))
         self.log("delete_user", admin.email, target.email, "account and saved keys deleted")
+
+    # ----------------------------------------------------------------------- "stay signed in" sessions
+    @staticmethod
+    def _token_hash(token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def create_session(self, user_id: int) -> str:
+        token = secrets.token_urlsafe(32)
+        now = _now()
+        with self.engine.begin() as c:
+            c.execute(delete(sessions).where(sessions.c.last_seen < now - dt.timedelta(days=SESSION_DAYS)))
+            c.execute(insert(sessions).values(token_hash=self._token_hash(token), user_id=user_id, created_at=now,
+                                              last_seen=now))
+        return token
+
+    def user_for_session(self, token: str) -> User | None:
+        """The active user a cookie token belongs to (sliding expiry), or None."""
+        if not token or len(token) > 200:
+            return None
+        h, now = self._token_hash(token), _now()
+        with self.engine.begin() as c:
+            row = c.execute(select(sessions).where(sessions.c.token_hash == h)).first()
+            if not row:
+                return None
+            if _aware(row.last_seen) < now - dt.timedelta(days=SESSION_DAYS):
+                c.execute(delete(sessions).where(sessions.c.token_hash == h))
+                return None
+            if _aware(row.last_seen) < now - dt.timedelta(minutes=10):     # touch at most every 10 minutes
+                c.execute(update(sessions).where(sessions.c.token_hash == h).values(last_seen=now))
+            urow = self._row(c, user_id=row.user_id)
+        return _user(urow) if urow and urow.status == "active" else None
+
+    def revoke_session(self, token: str) -> None:
+        if token:
+            with self.engine.begin() as c:
+                c.execute(delete(sessions).where(sessions.c.token_hash == self._token_hash(token)))
+
+    def revoke_all_sessions(self, user_id: int) -> None:
+        with self.engine.begin() as c:
+            c.execute(delete(sessions).where(sessions.c.user_id == user_id))
+
+    def pending_count(self) -> int:
+        with self.engine.connect() as c:
+            return c.execute(select(func.count()).select_from(users).where(users.c.status == "pending")).scalar_one()
 
     # ----------------------------------------------------------------------- broker keys
     def save_keys(self, user_id: int, values: dict[str, str]) -> list[str]:

@@ -4,7 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from scalpbot import brokers, creds
 from scalpbot.accounts import AccountError, Accounts, generate_master_key, hash_password, login_states, users, \
@@ -192,3 +192,39 @@ def test_first_local_account_is_admin_only_without_admin_emails(tmp_path):
                  state_dir=str(tmp_path))
     first, second = a.sign_up("me@x.io", "Me", "correct horse 9"), a.sign_up("you@x.io", "You", "correct horse 9")
     assert (first.role, first.status) == ("admin", "active") and (second.role, second.status) == ("user", "pending")
+
+
+# --------------------------------------------------------------------------- "stay signed in" sessions
+def test_sessions_restore_expire_and_revoke(acc):
+    from scalpbot.accounts import sessions
+    boss = acc.sign_up("boss@example.com", "B", "correct horse 9")
+    ann = acc.sign_up("ann@example.com", "A", "correct horse 9")
+    acc.approve(boss, ann.id)
+    t = acc.create_session(ann.id)
+    assert len(t) > 30 and acc.user_for_session(t).id == ann.id
+    with acc.engine.connect() as c:
+        stored = [r.token_hash for r in c.execute(select(sessions)).all()]
+    assert t not in stored and len(stored) == 1                       # only a hash is stored
+    assert acc.user_for_session("nope") is None and acc.user_for_session("") is None
+
+    acc.revoke_session(t)                                              # sign out
+    assert acc.user_for_session(t) is None
+
+    t1, t2 = acc.create_session(ann.id), acc.create_session(ann.id)    # two devices
+    acc.change_password(ann.id, "correct horse 9", "new battery 77")
+    assert acc.user_for_session(t1) is None and acc.user_for_session(t2) is None
+
+    t3 = acc.create_session(ann.id)
+    acc.disable(boss, ann.id)
+    assert acc.user_for_session(t3) is None
+    acc.enable(boss, ann.id)
+
+    t4 = acc.create_session(ann.id)
+    with acc.engine.begin() as c:                                       # unused for longer than SESSION_DAYS
+        c.execute(update(sessions).values(last_seen=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=8)))
+    assert acc.user_for_session(t4) is None
+
+    t5 = acc.create_session(ann.id)
+    acc.delete_user(boss, ann.id)
+    assert acc.user_for_session(t5) is None
+    assert acc.pending_count() == 0

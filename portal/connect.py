@@ -10,7 +10,7 @@ from scalpbot import portal_tools as pt
 from scalpbot.brokers import clear_candle_caches, clear_instrument_cache
 
 from portal import ui
-from portal.auth import accounts, current_user, hosted, portal_url
+from portal.auth import accounts, current_user, hosted, portal_url, refresh
 from portal.common import get_universe
 
 acc = accounts()
@@ -31,6 +31,7 @@ if msg:
 
 def _save(values: dict) -> None:
     saved = acc.save_keys(user.id, values)
+    refresh()
     if saved:
         clear_candle_caches()
         st.session_state["conn_msg"] = ("success", f"Saved: {', '.join(saved)}")
@@ -86,6 +87,7 @@ with tab["1 · Upstox (India)"]:
             try:
                 token = pt.upstox_get_token(pasted, my.UPSTOX_API_KEY, my.UPSTOX_API_SECRET, my.UPSTOX_REDIRECT_URI)
                 acc.save_keys(user.id, {"UPSTOX_ACCESS_TOKEN": token})
+                refresh()
                 acc.log("upstox_login", user.email)
                 st.session_state.pop("up_url", None)
                 clear_candle_caches()
@@ -156,6 +158,7 @@ with tab["3 · Test connections"]:
         which = st.multiselect("Keys to remove", [k for k in creds.FIELDS if k in saved_at], key="rm_keys")
         if st.button("Remove", key="rm_btn") and which:
             acc.remove_keys(user.id, which)
+            refresh()
             clear_candle_caches()
             st.session_state["conn_msg"] = ("success", f"Removed: {', '.join(which)}")
             st.rerun()

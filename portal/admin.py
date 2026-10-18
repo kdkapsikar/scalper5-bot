@@ -71,7 +71,7 @@ if pick:
         b = st.columns(4)
         if u.status == "active":
             if b[0].button("Disable", key="adm_disable"):
-                act(acc.disable, u.id, done=f"Disabled {u.email}. They are signed out on their next click.")
+                act(acc.disable, u.id, done=f"Disabled {u.email}. They are signed out within a minute.")
         elif b[0].button("Enable" if u.status == "disabled" else "Approve", key="adm_enable", type="primary"):
             act(acc.enable, u.id, done=f"{u.email} can sign in now.")
         if u.role == "user":

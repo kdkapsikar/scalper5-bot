@@ -10,6 +10,8 @@ encrypted and only used for their own pages. Admins also see the Admin page (use
 """
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 
 try:
@@ -24,7 +26,7 @@ from scalpbot.brokers import clear_candle_caches
 
 from portal import ui
 from portal.assistant import launcher
-from portal.auth import accounts, current_user, hosted, sign_out
+from portal.auth import accounts, current_user, hosted, my_creds, sign_out, write_cookie
 
 creds.strict()                               # this process serves many users: never use the server's .env keys
 st.set_page_config(page_title="Scalp5", page_icon=str(ui.ASSETS / "mark.svg"), layout="wide")
@@ -51,6 +53,7 @@ if "code" in qp and "state" in qp:
         try:
             token = pt.upstox_get_token(code, c.UPSTOX_API_KEY, c.UPSTOX_API_SECRET, c.UPSTOX_REDIRECT_URI)
             acc.save_keys(owner.id, {"UPSTOX_ACCESS_TOKEN": token})
+            st.session_state.pop("_creds_at", None)
             acc.log("upstox_login", owner.email)
             clear_candle_caches()
             st.session_state["conn_msg"] = ("success", pt.saved_message())
@@ -64,12 +67,14 @@ user = current_user()
 # --------------------------------------------------------------------------- signed out: only the sign-in page
 if user is None:
     creds.activate(creds.Creds())            # never fall back to keys in this server's environment
+    write_cookie()                           # e.g. clear the "stay signed in" cookie after signing out
     st.navigation([st.Page("portal/login.py", title="Sign in", icon=":material/lock:", url_path="signin")], position="hidden").run()
     st.stop()
 
 # --------------------------------------------------------------------------- signed in
 st.session_state.pop("auth_msg", None)
-my = acc.load_creds(user.id)
+write_cookie()                               # "stay signed in" cookie, right after signing in
+my = my_creds(user)                          # cached per session, re-read once a minute
 creds.activate(my)
 up_ok = bool(my.UPSTOX_ACCESS_TOKEN)
 if user.is_admin and not hosted() and my.UPSTOX_ACCESS_TOKEN and pt.bot_pid():
@@ -87,7 +92,9 @@ pages = {"Trade": [scanner, mood, backtest], "Setup": [connect, account]}
 if user.is_admin and not hosted():
     pages["Trade"].append(st.Page("portal/alerts.py", title="Alert bot", icon=":material/notifications_active:", url_path="bot"))
 if user.is_admin:
-    pending = sum(1 for u in acc.list_users() if u.status == "pending")
+    if time.time() - st.session_state.get("_pending_at", 0) > 60:
+        st.session_state.update(_pending=acc.pending_count(), _pending_at=time.time())
+    pending = st.session_state["_pending"]
     pages["Admin"] = [st.Page("portal/admin.py", title=f"Users ({pending} pending)" if pending else "Users",
                               icon=":material/group:", url_path="admin")]
 

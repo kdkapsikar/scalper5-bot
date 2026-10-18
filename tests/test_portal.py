@@ -210,7 +210,9 @@ def test_regular_user_cannot_open_the_admin_page(at, portal_db):
         at.switch_page("portal/admin.py")                   # not even registered for regular users
 
 
-def test_disabled_user_is_signed_out_on_next_click(at, portal_db):
+def test_disabled_user_is_signed_out_on_next_check(at, portal_db, monkeypatch):
+    from portal import auth
+    monkeypatch.setattr(auth, "RECHECK_SECONDS", 0)          # normally the cached user is re-checked once a minute
     boss = make_user(portal_db, "boss@example.com", role="admin")
     ann = make_user(portal_db)
     sign_in(at, ann).run()

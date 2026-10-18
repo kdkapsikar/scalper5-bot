@@ -80,7 +80,12 @@ The same setup as wardwatch and eNagarparishad: GitHub holds the code, [Render](
    `PORTAL_URL` (the service's address, e.g. `https://scalp5-portal.onrender.com/`).
 4. **First admin:** sign up with an email in `ADMIN_EMAILS`. Share the address; new sign-ups wait under **Users**.
 
-On the free plan the portal sleeps after ~15 idle minutes and the first visit after that takes ~30-60 s. Everything
+On the free plan the portal sleeps after ~15 idle minutes and the first visit after that takes ~30-60 s.
+[`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) pings it every 10 minutes on weekdays
+08:30-16:30 IST (about 180 of the free plan's 750 hours a month), so it stays awake while the market is open.
+Signing in sets a "stay signed in" cookie for 7 days, so refreshing, a dropped connection or the portal waking up
+doesn't sign anyone out. For snappy pages, create the Neon project in the **same region as Render** (AWS
+Singapore, `ap-southeast-1`); a database on another continent adds a delay to every page load. Everything
 works on demand, including the Bull & Bear assistant; only the 5-minute **Alert bot** needs an always-on machine.
 
 ### Landing page on GitHub Pages

@@ -16,7 +16,7 @@ from scalpbot import scan as sc
 from scalpbot.mood import all_moods
 
 from portal import mascots, ui
-from portal.auth import accounts, current_user
+from portal.auth import accounts, current_user, my_creds
 from portal.common import QUICK_GROUPS, check_one, get_universe, measure
 
 HISTORY = "s5_chat"
@@ -105,7 +105,7 @@ def chat() -> None:
     user = current_user()
     if user is None:
         st.stop()
-    creds.activate(accounts().load_creds(user.id))   # dialog reruns skip app.py, so re-activate this user's keys
+    creds.activate(my_creds(user))                   # dialog reruns skip app.py, so re-activate this user's keys
     if HISTORY not in st.session_state:
         st.session_state[HISTORY] = []
         _say(A.reply_help((user.name or "").split(" ")[0]))
