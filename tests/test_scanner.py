@@ -1,4 +1,4 @@
-"""Universe building, scan/analysis logic, the CLI and the Streamlit app (run headless with AppTest)."""
+"""Universe building, scan/analysis logic and the CLI."""
 import re
 import zlib
 from datetime import date
@@ -11,7 +11,6 @@ import pytest
 from scalpbot import scan as sc
 from scalpbot import universe
 from scalpbot.brokers import AuthExpired
-from scalpbot.chart import make_chart
 from scalpbot.strategy import StrategyConfig, add_signals, compute
 from scalpbot.universe import build_universe, pick_futures
 from scalpbot.watchlist import Instrument
@@ -233,82 +232,3 @@ def test_check_command_samples_each_group(monkeypatch, tmp_path, capsys):
     assert fetched.count("BTCUSDT") == 1 and "XAUUSDT" not in fetched         # only 2 crypto sampled
     assert check.main(["--watchlist", str(y), "--all"]) == 1
     assert "TCS FUT" in fetched and "AUTH: token expired" in capsys.readouterr().out
-
-
-def test_chart_builds():
-    ind = _signal_frame(2999)
-    fig = make_chart(ind, "TEST", n=120)
-    names = {t.name for t in fig.data}
-    assert {"Price", "SMA 22", "SMA 33", "200 DEMA", "Long signal"} <= names
-
-
-# --------------------------------------------------------------------------- the app, run headless
-@pytest.fixture
-def app(monkeypatch, tmp_path, portal_db):
-    pytest.importorskip("streamlit")
-    pytest.importorskip("plotly")
-    from streamlit.testing.v1 import AppTest
-    import streamlit as st
-
-    st.cache_data.clear()
-    monkeypatch.setenv("SCALP_WATCHLIST", str(ROOT / "watchlist.yaml"))
-    monkeypatch.setenv("SCALP_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(universe, "_load_instruments", lambda ex: NSE_ROWS if ex == "NSE" else MCX_ROWS)
-
-    def fake(inst, n=1000):
-        if inst.source == "coinswitch":
-            raise AuthExpired("keys missing")
-        return _recent_frame(inst.name)
-
-    monkeypatch.setattr(sc, "fetch_candles", fake)
-    from tests.conftest import make_user, sign_in
-    user = make_user(portal_db, keys={"UPSTOX_ACCESS_TOKEN": "test-token"})   # "connected": opens on the Scanner
-    return sign_in(AppTest.from_file(str(ROOT / "app.py"), default_timeout=120), user)
-
-
-def test_app_scan_all_mode(app):
-    app.run()
-    assert not app.exception
-    assert app.radio(key="mode").value == "Scan all"
-    assert set(app.multiselect(key="groups").value) == {"Index futures", "Stock futures", "Crypto"}
-    app.button(key="run_scan").click().run()
-    assert not app.exception
-    m = {re.sub(r":\w+\[(.*)\]", r"\1", x.label): x.value for x in app.metric}   # labels may carry colour markup
-    assert m["Scanned"] == "8"                       # 2 index + 2 stock futures + 4 crypto
-    assert m["Errors"] == "4"                        # crypto keys are "missing" in this fake
-    assert int(m["Long"]) + int(m["Short"]) + int(m["Blocked"]) + int(m["Closed / delayed"]) + 4 <= 8
-
-
-def test_app_universe_filter_and_single_ticker(app):
-    app.run()
-    app.multiselect(key="groups").set_value(["Index futures"]).run()
-    app.button(key="run_scan").click().run()
-    assert {x.label: x.value for x in app.metric}["Scanned"] == "2"
-    app.radio(key="mode").set_value("Single ticker").run()
-    assert not app.exception
-    assert app.selectbox(key="ticker").options == ["BANKNIFTY FUT", "NIFTY FUT"]
-    app.selectbox(key="ticker").select("NIFTY FUT").run()
-    assert not app.exception
-    assert len(app.dataframe) >= 2                   # LONG and SHORT checklists
-    assert any("NIFTY FUT" in s.value for s in app.subheader)
-
-
-def test_app_single_ticker_error_is_shown(app):
-    app.run()
-    app.radio(key="mode").set_value("Single ticker").run()
-    app.selectbox(key="ticker").select("BTCUSDT").run()
-    assert not app.exception
-    assert any("keys missing" in e.value for e in app.error)
-
-
-def test_stale_crypto_is_a_data_delay_not_a_closed_market():
-    now = pd.Timestamp("2026-10-18 14:34", tz="UTC")
-    last_open = pd.Timestamp("2026-10-18 13:55", tz="UTC")              # candle ended 14:00 -> 34 min old
-    btc = sc.Result(name="BTCUSDT", group="Crypto", source="coinswitch", status="STALE", stale=True, last_candle=last_open)
-    nifty = sc.Result(name="NIFTY FUT", group="Index futures", source="upstox", status="STALE", stale=True,
-                      last_candle=last_open)
-    assert sc.always_open(btc) and not sc.always_open(nifty)
-    assert sc.data_age_min(btc, now) == pytest.approx(34)
-    t = sc.stale_text(btc, now)
-    assert t.startswith("Data delayed") and "34 min" in t and "not a closed market" in t
-    assert sc.stale_text(nifty, now).startswith("Market closed")

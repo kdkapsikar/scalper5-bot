@@ -1,7 +1,7 @@
-# Render Blueprint for the Scalp5 portal (Streamlit app + Bull & Bear assistant). Database: Neon, as in wardwatch.
-# New > Blueprint > pick this repo (private repos work once Render's GitHub app can see it), then fill in the
-# secrets below. (Free plan: the service sleeps after ~15 min idle, so the first visit after a pause takes ~30-60 s.
-# The Bull & Bear assistant answers on demand, so it works on the free plan; the 5-minute Alert bot does not.)
+# Render Blueprint for the Scalp5 API (FastAPI). The web app is on GitHub Pages; the database is Neon (as in wardwatch).
+# New > Blueprint > pick this repo (private repos work once Render's GitHub app can see it), then fill in the secrets.
+# (Free plan: the service sleeps after ~15 min idle; the first request after a pause takes ~30-60 s. keepalive.yml keeps
+# it awake on weekdays during Indian market hours.)
 services:
   - type: web
     name: scalp5-portal
@@ -9,8 +9,8 @@ services:
     plan: free
     region: singapore
     buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
-    healthCheckPath: /_stcore/health
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /api/health
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
@@ -19,16 +19,18 @@ services:
         value: Asia/Kolkata
       - key: SCALP_HOSTED
         value: "1"
+      # The web app's origin (GitHub Pages), no path and no trailing slash
+      - key: CORS_ORIGINS
+        value: https://kdkapsikar.github.io
+      # The web app's address; the Upstox redirect URI is APP_URL + /upstox/callback
+      - key: APP_URL
+        value: https://kdkapsikar.github.io/scalper5-bot
       # Neon *direct* connection string (not the pooled one), ending in ?sslmode=require
       - key: DATABASE_URL
         sync: false
-      # Encrypts everyone's broker keys: python -m scalpbot.accounts --new-master-key
-      # Keep a copy somewhere safe - if it is lost, every user has to re-enter their keys.
+      # Encrypts everyone's broker keys: python -m scalpbot.accounts --new-master-key (keep a copy somewhere safe)
       - key: SCALP_MASTER_KEY
         sync: false
       # Comma-separated emails that become admins when they sign up
       - key: ADMIN_EMAILS
-        sync: false
-      # The public address, e.g. https://scalp5-portal.onrender.com/ - users register it as their Upstox redirect URI
-      - key: PORTAL_URL
         sync: false

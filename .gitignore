@@ -9,3 +9,5 @@ trades.csv
 data/
 *.zip
 .streamlit/secrets.toml
+web/node_modules/
+web/dist/

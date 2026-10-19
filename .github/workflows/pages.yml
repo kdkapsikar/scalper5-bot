@@ -1,15 +1,14 @@
-name: Deploy landing page to GitHub Pages
+name: Deploy web app to GitHub Pages
 
-# Publishes the static landing page in site/ (the portal itself runs on Render, see README "Hosting").
+# Builds the React app in web/ and publishes it. The API runs on Render (render.yaml).
 # One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
-# The "Open the portal" buttons point at https://scalp5-portal.onrender.com/. To point them elsewhere (e.g. a custom
-# domain), add Settings -> Secrets and variables -> Actions -> Variables -> PORTAL_URL and re-run this workflow.
+# The app calls the API at https://scalp5-portal.onrender.com; to use another address, add the Actions variable API_URL.
 
 on:
   push:
     branches: [main]
     paths:
-      - 'site/**'
+      - 'web/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -25,22 +24,29 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VITE_API_URL: ${{ vars.API_URL || 'https://scalp5-portal.onrender.com' }}
+      VITE_BASE: /${{ github.event.repository.name }}/
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
-
-      - name: Point the buttons at PORTAL_URL (if set)
-        if: ${{ vars.PORTAL_URL != '' }}
-        env:
-          PORTAL_URL: ${{ vars.PORTAL_URL }}
-        run: |
-          url="${PORTAL_URL%/}/"
-          sed -i "s#https://scalp5-portal.onrender.com/#${url}#g" site/index.html
-          echo "::notice::Buttons point at ${url}"
-
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      # GitHub Pages serves 404.html for unknown paths; a copy of index.html lets deep links such as
+      # /scalper5-bot/app/scanner or the Upstox redirect (/upstox/callback) load the app, which then routes itself.
+      - name: SPA fallback for deep links
+        run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: web/dist
 
   deploy:
     needs: build

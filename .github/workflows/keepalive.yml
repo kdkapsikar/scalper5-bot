@@ -21,7 +21,7 @@ jobs:
         env:
           PORTAL_URL: ${{ vars.PORTAL_URL || 'https://scalp5-portal.onrender.com/' }}
         run: |
-          url="${PORTAL_URL%/}/_stcore/health"
+          url="${PORTAL_URL%/}/api/health"
           for i in 1 2 3; do
             code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$url") && [ "$code" = "200" ] && { echo "awake ($code)"; exit 0; }
             echo "attempt $i: HTTP ${code:-none}, retrying"; sleep 10

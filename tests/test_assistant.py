@@ -1,15 +1,11 @@
-"""Bull & Bear assistant: understanding questions, the replies, and the floating launcher + chat in the portal."""
-from pathlib import Path
-
+"""Bull & Bear assistant: understanding questions and the replies (the API serves them, see test_api.py)."""
 import pandas as pd
 import pytest
 
 from scalpbot import assistant as A
 from scalpbot.mood import Mood
 from scalpbot.scan import Result
-from tests.conftest import make_user, sign_in
 
-ROOT = Path(__file__).resolve().parent.parent
 NAMES = ["NIFTY FUT", "BANKNIFTY FUT", "RELIANCE FUT", "HDFCBANK FUT", "SBIN FUT", "M&M FUT", "BTCUSDT", "ETHUSDT",
          "PAXGUSDT", "XAUUSDT"]
 
@@ -93,66 +89,3 @@ def test_replies_never_sound_like_advice():
     assert "isn't advice" in texts
     for word in ("buy now", "sell now", "guaranteed", "sure shot"):
         assert word not in texts
-
-
-# --------------------------------------------------------------------------- in the portal
-@pytest.fixture
-def at(monkeypatch, tmp_path, portal_db):
-    from streamlit.testing.v1 import AppTest
-    from scalpbot import scan as sc
-    from scalpbot import universe
-    from tests.test_scanner import MCX_ROWS, NSE_ROWS, _recent_frame
-
-    monkeypatch.setenv("SCALP_WATCHLIST", str(ROOT / "watchlist.yaml"))
-    monkeypatch.setenv("SCALP_STATE_DIR", str(tmp_path))
-    monkeypatch.setattr(universe, "_load_instruments", lambda ex: NSE_ROWS if ex == "NSE" else MCX_ROWS)
-    monkeypatch.setattr(sc, "fetch_candles", lambda inst, n=1000: _recent_frame(inst.name))
-    monkeypatch.chdir(ROOT)
-    user = make_user(portal_db, keys={"UPSTOX_ACCESS_TOKEN": "t", "COINSWITCH_API_KEY": "k", "COINSWITCH_SECRET_KEY": "00"})
-    return sign_in(AppTest.from_file(str(ROOT / "app.py"), default_timeout=120), user)
-
-
-def test_launcher_on_every_signed_in_page(at):
-    at.run()
-    assert not at.exception
-    assert any('class="s5-duo"' in m.value for m in at.markdown)
-    assert at.button(key="s5bot_open").label == "Ask Bull & Bear"
-    at.switch_page("portal/mood.py").run()
-    assert not at.exception
-    bubble = [m.value for m in at.markdown if 'class="s5-bubble"' in m.value][0]
-    assert "Market mood:" in bubble                          # greets with the mood the page just measured
-
-
-def test_launcher_hidden_when_signed_out(monkeypatch, tmp_path, portal_db):
-    from streamlit.testing.v1 import AppTest
-    monkeypatch.chdir(ROOT)
-    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
-    at.run()
-    assert not at.exception
-    assert not any('s5-duo' in m.value for m in at.markdown)
-
-
-def test_chat_opens_and_answers(at):
-    at.run()
-    at.button(key="s5bot_open").click().run()
-    assert not at.exception
-    assert any("Your market desk" in m.value for m in at.markdown)
-    assert any("Namaste" in m.value for m in at.markdown)
-    # In the browser the dialog reruns on its own; AppTest reruns the whole script, so open it and ask in one run.
-    at.button(key="s5bot_open").click()
-    at.chat_input(key="s5bot_input").set_value("is my upstox connected").run()
-    assert not at.exception
-    texts = " ".join(m.value for m in at.markdown)
-    assert "All set" in texts                                 # answered with this user's saved keys
-
-
-def test_chat_menu_chip_reads_the_market(at):
-    at.run()
-    at.button(key="s5bot_open").click().run()
-    chips = [w for w in at.button_group if w.key and w.key.startswith("s5bot_pill")] if hasattr(at, "button_group") else []
-    if not chips:
-        pytest.skip("this Streamlit version's AppTest does not expose st.pills")
-    at.button(key="s5bot_open").click()
-    chips[0].set_value("🐂🐻 Market mood").run()
-    assert not at.exception
-    assert any("India" in m.value and "/100" in m.value for m in at.markdown)

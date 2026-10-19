@@ -1,9 +1,15 @@
 # scalp5-bot
 
-5-minute scalping signals for **Indian index and F&O stock futures** (via Upstox) and **BTC, ETH, PAXG and XAUUSDT** futures (via CoinSwitch PRO). Everything runs from one **web portal**:
+5-minute scalping signals for **Indian index and F&O stock futures** (via Upstox) and **BTC, ETH, PAXG and XAUUSDT** futures (via CoinSwitch PRO), with a Bull / Bear market mood and the **Bull & Bear** assistant.
 
-```bash
-streamlit run app.py        # or double-click start.command on a Mac
+Built like wardwatch: a **React** web app on **GitHub Pages** ([`web/`](web/)), a **FastAPI** service on **Render**
+([`api/`](api/)) and **Neon** Postgres. The trading engine is plain Python ([`scalpbot/`](scalpbot/)) and is shared by the
+API and the command-line tools.
+
+```
+Browser ── GitHub Pages: web/ (React, Vite, Tailwind)  ─┐
+                                                        │ HTTPS + Bearer token
+Render: api/ (FastAPI) ── scalpbot/ (signals, brokers) ─┘── Neon (accounts, encrypted keys, sessions)
 ```
 
 Everyone **signs in** first. People create an account, an admin approves it, and each person connects **their own** Upstox and CoinSwitch accounts (keys are encrypted per user).
@@ -11,15 +17,15 @@ Everyone **signs in** first. People create an account, an admin approves it, and
 | Page | Who | What you do there |
 |------|-----|-------------------|
 | **Connect** | everyone | Save your own Upstox and CoinSwitch keys, do the daily Upstox login, run a connection test |
-| **Scanner** | everyone | **Scan all**: everything satisfying the rules now. **Single ticker**: one instrument's full status, checklists and chart |
+| **Scanner** | everyone | **Scan all**: everything satisfying the rules now. **Single ticker**: one instrument's status, checklists and an interactive chart |
 | **Market mood** 🐂🐻 | everyone | Bull / Bear read of Indian futures and of crypto, with the reasons behind it |
 | **Backtest** | everyone | Replay the rules on a ticker's recent history and compare the three 200 DEMA trigger modes |
 | **My account** | everyone | Change your password |
 | **Users** | admins | Approve or reject sign-ups, disable / re-enable, make admin, delete, and the activity log |
 | **Bull & Bear** 🐂🐻 | everyone, every page | Floating chat assistant (bottom-right): market mood, live signals, any ticker's status, indicator explanations, connection check |
-| **Alert bot** | admins, local installs only | Start / stop the 5-minute alert bot in the background with your saved keys |
 
-The command-line tools (`python -m scalpbot.scan`, `.bot`, `.check`, `.backtest`) still work too.
+The command-line tools (`python -m scalpbot.scan`, `.bot`, `.check`, `.backtest`) still work too; the 5-minute Telegram
+**alert bot** runs from the command line or Docker (see below).
 
 > **Analysis and alerts only.** Nothing here places orders. Nothing here is financial advice; backtest and paper-trade before risking money.
 >
@@ -52,77 +58,64 @@ Defined in the `universe:` section of `watchlist.yaml`:
 
 Upstox's instrument list is downloaded once a day, so futures roll to the next expiry on their own (set `roll_days` to switch a few days before expiry). Use `only:` / `exclude:` to trim the stock futures, for example `only: [RELIANCE, TCS, SBIN]`.
 
-## Setup
+## Run it on your computer
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-streamlit run app.py
+uvicorn api.main:app --reload --port 8000               # the API
+cd web && npm install && npm run dev                     # the web app at http://localhost:5173 (proxies /api to :8000)
 ```
 
-Open http://localhost:8501 and **create an account**. On a local install the first account becomes the admin (or list your email in `ADMIN_EMAILS`). Accounts, roles and encrypted keys live in `.state/portal.db`; the encryption key is created at `.state/master.key` (both git-ignored). Then open the **Connect** page:
+Or double-click `start.command` on a Mac: it builds the web app once and serves everything at http://localhost:8000.
 
-1. **Upstox:** create an app on the Upstox developer site and register the portal address (`http://localhost:8501/` locally, or `PORTAL_URL` when hosted) as its redirect URI. Save the API key, secret and redirect URI, press *Prepare Upstox login*, then *Log in to Upstox*; you come back to the portal and the token is saved to your account. Tokens expire daily: repeat each trading morning.
-2. **CoinSwitch:** save the API key and secret (no withdrawal rights if offered; restrict to your IP only when running locally).
-3. **Telegram** (local installs, optional): bot token and chat id for the Alert bot, with a test button.
-4. **Test connections:** fetches real candles and shows what came back. Confirm `PAXGUSDT` and `XAUUSDT` are OK.
+**Create an account.** On a local install the first account becomes the admin (or list your email in `ADMIN_EMAILS`).
+Accounts, roles, sessions and encrypted keys live in `.state/portal.db`; the encryption key is created at
+`.state/master.key` (both git-ignored). Then open **Connect**:
 
-The portal never uses keys from the server's `.env`; those are only for the command-line tools.
+1. **Upstox:** create an app on the Upstox developer site and register the redirect URI shown on the page
+   (`APP_URL` + `/upstox/callback`, e.g. `http://localhost:5173/upstox/callback`). Save the API key, secret and redirect
+   URI, then *Log in to Upstox*; you come back to the app and the token is saved to your account. Tokens expire daily:
+   repeat each trading morning.
+2. **CoinSwitch:** save the API key and secret (no withdrawal rights if offered).
+3. **Test connections:** fetches real candles and shows what came back. Confirm `PAXGUSDT` and `XAUUSDT` are OK.
 
-## Hosting (GitHub + Render + Neon)
+The API never uses keys from the server's `.env`; those are only for the command-line tools.
 
-The same setup as wardwatch and eNagarparishad: GitHub holds the code, [Render](https://render.com) runs the portal from
-[`render.yaml`](render.yaml), and [Neon](https://neon.tech) holds the database.
+## Hosting (GitHub Pages + Render + Neon)
 
-1. **Database:** create a free Neon project and copy its *direct* connection string (ends in `?sslmode=require`).
+1. **Database:** create a free Neon project in AWS Singapore (`ap-southeast-1`, next to Render) and copy its *direct*
+   connection string (ends in `?sslmode=require`).
 2. **Master key:** run `python -m scalpbot.accounts --new-master-key` and keep a copy somewhere safe.
-3. **Render:** *New > Blueprint*, pick this repo, then fill in `DATABASE_URL`, `SCALP_MASTER_KEY`, `ADMIN_EMAILS` and
-   `PORTAL_URL` (the service's address, e.g. `https://scalp5-portal.onrender.com/`).
-4. **First admin:** sign up with an email in `ADMIN_EMAILS`. Share the address; new sign-ups wait under **Users**.
+3. **API on Render:** *New > Blueprint*, pick this repo ([`render.yaml`](render.yaml)), then fill in `DATABASE_URL`,
+   `SCALP_MASTER_KEY` and `ADMIN_EMAILS`. `CORS_ORIGINS` and `APP_URL` are set in `render.yaml` for
+   `https://kdkapsikar.github.io/scalper5-bot`; change them for another address.
+4. **Web app on GitHub Pages:** repo **Settings > Pages > Source: GitHub Actions**.
+   [`.github/workflows/pages.yml`](.github/workflows/pages.yml) builds `web/` on every push that touches it and points it
+   at `https://scalp5-portal.onrender.com` (set the Actions variable `API_URL` for another address). Free GitHub plans
+   publish Pages from public repos only.
+5. **First admin:** sign up with an email in `ADMIN_EMAILS`. Share the Pages address; new sign-ups wait under **Users**.
+6. **Upstox:** everyone registers `https://kdkapsikar.github.io/scalper5-bot/upstox/callback` as their Upstox app's
+   redirect URI.
 
-On the free plan the portal sleeps after ~15 idle minutes and the first visit after that takes ~30-60 s.
-[`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) pings it every 10 minutes on weekdays
-08:30-16:30 IST (about 180 of the free plan's 750 hours a month), so it stays awake while the market is open.
-Signing in sets a "stay signed in" cookie for 7 days, so refreshing, a dropped connection or the portal waking up
-doesn't sign anyone out. For snappy pages, create the Neon project in the **same region as Render** (AWS
-Singapore, `ap-southeast-1`); a database on another continent adds a delay to every page load. Everything
-works on demand, including the Bull & Bear assistant; only the 5-minute **Alert bot** needs an always-on machine.
+The pages load instantly from GitHub. On Render's free plan the API sleeps after ~15 idle minutes, so the first data
+request after a pause takes ~30-60 s (the app shows "Waking the server up…", and the home page starts waking it).
+[`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) pings it every 10 minutes on weekdays 08:30-16:30
+IST (about 180 of the free plan's 750 hours a month). Slow work (a full scan, the full-breadth mood, a connection
+test) runs as a background job that the page polls, so the screen stays responsive.
 
-### Landing page on GitHub Pages
-
-[`site/`](site/) is a static landing page (branding, features, Bull & Bear, how to join) whose **Open the portal**
-buttons go to the Render address. It also pings the portal on load, so a sleeping free instance starts waking up
-before anyone clicks. [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes it on every push that
-touches `site/`.
-
-1. Pages needs a **public** repo on a free GitHub plan (or GitHub Pro for a private one).
-2. Repo **Settings > Pages > Source: GitHub Actions**, then run the *Deploy landing page to GitHub Pages* workflow
-   (Actions tab) once. It appears at `https://<user>.github.io/<repo>/`.
-3. To point the buttons somewhere else (e.g. a custom domain), add an Actions variable `PORTAL_URL` and re-run it.
-
-### Alternative: Streamlit Community Cloud
-
-GitHub holds the code; [Streamlit Community Cloud](https://share.streamlit.io) runs it (free, deploys from a public or private GitHub repo).
-
-1. **Database:** create a free Postgres database on [Neon](https://neon.tech) or [Supabase](https://supabase.com) and copy its connection string. Community Cloud has no lasting disk, so SQLite would be wiped on every restart.
-2. **Master key:** run `python -m scalpbot.accounts --new-master-key` and keep a copy somewhere safe. If you lose it, everyone has to re-enter their keys.
-3. **Deploy:** on share.streamlit.io choose *Create app*, pick the repo, branch `main`, main file `app.py`. Under *Advanced settings > Secrets* paste the contents of [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) with your values (`DATABASE_URL`, `SCALP_MASTER_KEY`, `ADMIN_EMAILS`, `PORTAL_URL`, `SCALP_HOSTED`).
-4. **First admin:** sign up with an email listed in `ADMIN_EMAILS`; you are in immediately as admin. Share the app URL; new sign-ups appear under **Users** for approval.
-
-What changes when hosted:
-
-- **No Alert bot.** Community Cloud apps sleep when nobody is using them and can't run a background job every 5 minutes. Run the bot on your own computer or a small always-on server instead (`docker compose up -d`).
-- **CoinSwitch keys can't be IP-restricted**, because the cloud server's address changes. Ask people to create keys with no withdrawal rights.
-- **Upstox rate limits are per user** (each person uses their own token), so one user's scans don't eat into another's.
-- **Trust:** the admin can't see anyone's keys in the portal, but whoever holds both the database and `SCALP_MASTER_KEY` could decrypt them. The Connect page tells users this.
-- Signing in lasts for the browser tab's session (refreshing the page signs you out) and ends after 12 idle hours. Five wrong passwords lock an account for 15 minutes.
+Security notes: sign-in returns an opaque token (only its sha256 is stored) kept in the browser and sent as
+`Authorization: Bearer`; sessions last 7 days from last use and are revoked by signing out, a password change,
+disabling or deleting the user. Five wrong passwords lock an account for 15 minutes. CoinSwitch keys can't be
+IP-restricted on Render (its address changes); Upstox rate limits are per user. The admin can't see anyone's keys,
+but whoever holds both the database and `SCALP_MASTER_KEY` could decrypt them; the Connect page tells users this.
 
 ## 1. The scanner page
 
-Sidebar: **Mode**, **Universe** (tick which groups), **Strategy rules** (DEMA trigger mode and each filter), **Look back** (a signal fires on a candle close, so the scan also reports signals from the last N closed candles, default 3, so you don't miss one by opening the app late), and **Include closed markets** (to review the last session, e.g. at night).
+Controls: **Scan all / Single ticker**, **Universe** (tick which groups), **Strategy rules** (DEMA trigger mode and each filter), **Look back** (a signal fires on a candle close, so the scan also reports signals from the last N closed candles, default 3, so you don't miss one by opening the app late), and **Include closed markets** (to review the last session, e.g. at night).
 
-- **Scan all:** press **Run scan**. You get counts (long, short, blocked, market closed, errors), a table of everything satisfying all conditions (ticker, signal, trigger, candles ago, close time, price, stop, target, RSI) with CSV download, an optional **near-misses** table (a trigger fired but a filter blocked it, with the blocking filter named), and a picker to open any result in detail. A full F&O scan takes a minute or two; run it again after the next 5-minute close.
-- **Single ticker:** choose from the dropdown; the page shows the headline status, key metrics, the LONG and SHORT checklists, the chart (candles, SMA 22/33, 200 DEMA, Supertrend, pivots, signal markers) and the latest cross times. **Refresh** re-fetches.
+- **Scan all:** press **Run scan**. You get counts (long, short, blocked, market closed, errors), a table of everything satisfying all conditions (ticker, signal, trigger, candles ago, close time, price, stop, target, RSI) with CSV download, an optional **near-misses** table (a trigger fired but a filter blocked it, with the blocking filter named), and a click on any row opens it in detail. A full F&O scan takes a minute or two; run it again after the next 5-minute close.
+- **Single ticker:** type to search; the page shows the headline status, key metrics, the LONG and SHORT checklists, an interactive chart (candles, SMA 22/33, 200 DEMA, Supertrend, pivots, signal markers; times in IST) and the latest cross times. **Refresh** re-fetches.
 
 There is also a command-line version: `python -m scalpbot.scan` (scan all), `python -m scalpbot.scan --ticker "RELIANCE FUT"` (one ticker), with `--groups`, `--lookback`, `--show-blocked`, `--include-closed`.
 
@@ -157,12 +150,12 @@ greets you with it. *Ask Bull & Bear* opens the chat:
 
 Or just type: *nifty*, *how is banknifty*, *btc*, *gold*, *any signals?*, *what is rsi*. It reads **your own** broker
 data (cached per 5-minute candle), describes what the rules see and never places orders or gives advice. Code:
-[scalpbot/assistant.py](scalpbot/assistant.py) (the logic) and [portal/assistant.py](portal/assistant.py) +
-[portal/mascots.py](portal/mascots.py) (chat window and the animated SVG mascots).
+[scalpbot/assistant.py](scalpbot/assistant.py) (the logic), [api/account.py](api/account.py) (`POST /api/assistant`) and
+[web/src/components/Assistant.jsx](web/src/components/Assistant.jsx) (chat window and the animated SVG mascots).
 
 ## 2. The alert bot
 
-Admins on a local install can start and stop it from the **Alert bot** page (it uses that admin's saved keys). From a terminal instead (keys from `.env`):
+It needs an always-on machine (your computer or a small server); keys come from `.env`:
 
 ```bash
 python -m scalpbot.bot                                   # whole universe
