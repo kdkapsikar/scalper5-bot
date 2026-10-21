@@ -4,6 +4,7 @@ import { api, runJob } from '../lib/api.js';
 import { downloadCsv, fmt, istTime, pct } from '../lib/format.js';
 import { CandleChart } from '../components/Charts.jsx';
 import Rules, { DEFAULT_RULES } from '../components/Rules.jsx';
+import TickerPicker from '../components/TickerPicker.jsx';
 import { Banner, Button, Empty, ErrorText, Metric, Metrics, PageHeader, Progress, Segmented, useStored } from '../components/ui.jsx';
 
 export function useUniverse() {
@@ -228,11 +229,9 @@ export default function Scanner() {
             <ScanAll universe={universe} rules={rules} lookback={lookback} includeClosed={includeClosed} groups={active} onPick={pick} />
           ) : (
             <>
-              <label className="field mb-5 max-w-md">
-                <span>Ticker</span>
-                <input className="input" list="tickers" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} placeholder="Type to search, e.g. NIFTY FUT" />
-                <datalist id="tickers">{names.map((n) => <option key={n} value={n} />)}</datalist>
-              </label>
+              <div className="mb-5 max-w-md">
+                <TickerPicker instruments={(universe?.instruments ?? []).filter((i) => active.includes(i.group))} value={ticker} onChange={setTicker} />
+              </div>
               {names.includes(ticker) ? <TickerDetail name={ticker} rules={rules} lookback={lookback} />
                 : <Empty icon="🔎" title="Pick a ticker">Type a name from the list, e.g. NIFTY FUT, RELIANCE FUT or BTCUSDT.</Empty>}
             </>

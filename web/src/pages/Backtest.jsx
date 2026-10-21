@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { downloadCsv, fmt, istTime } from '../lib/format.js';
 import { EquityChart } from '../components/Charts.jsx';
 import Rules, { DEFAULT_RULES } from '../components/Rules.jsx';
+import TickerPicker from '../components/TickerPicker.jsx';
 import { Banner, Button, ErrorText, Field, PageHeader, Segmented, useStored } from '../components/ui.jsx';
 import { useUniverse } from './Scanner.jsx';
 
@@ -43,10 +44,7 @@ export default function Backtest() {
       <ErrorText error={uErr} />
       <div className="card mb-5 grid gap-4 p-4">
         <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
-          <Field label="Ticker">
-            <input className="input" list="bt-tickers" value={name} onChange={(e) => setName(e.target.value.toUpperCase())} />
-            <datalist id="bt-tickers">{names.map((x) => <option key={x} value={x} />)}</datalist>
-          </Field>
+          <TickerPicker instruments={universe?.instruments ?? []} value={name} onChange={setName} />
           <Field label="Fee per side (bps)" hint="1 bps = 0.01%"><input className="input" type="number" min={0} max={100} step={0.5} value={fee} onChange={(e) => setFee(e.target.value)} /></Field>
           <Field label="Slippage per side (bps)"><input className="input" type="number" min={0} max={100} step={0.5} value={slip} onChange={(e) => setSlip(e.target.value)} /></Field>
         </div>
