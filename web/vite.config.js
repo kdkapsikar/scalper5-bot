@@ -17,7 +17,8 @@ function contentSecurityPolicy(apiUrl) {
       const api = new URL(apiUrl).origin;
       const policy = [
         "default-src 'self'",
-        "script-src 'self'",
+        "script-src 'self' https://s3.tradingview.com",   // TradingView's embeddable chart (XAUUSD page)
+        "frame-src https://www.tradingview-widget.com https://s.tradingview.com https://www.tradingview.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data:",

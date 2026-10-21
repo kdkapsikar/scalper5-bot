@@ -135,12 +135,18 @@ function Checklist({ title, checks }) {
   );
 }
 
-export function TickerDetail({ name, rules, lookback }) {
+export function TickerDetail({ name, rules, lookback, autoRefresh = 0 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [n, setN] = useState(0);
   const key = JSON.stringify(rules);
+
+  useEffect(() => {                                    // optional: re-fetch every `autoRefresh` seconds
+    if (!autoRefresh) return undefined;
+    const t = setInterval(() => { if (document.visibilityState === 'visible') setN((x) => x + 1); }, autoRefresh * 1000);
+    return () => clearInterval(t);
+  }, [autoRefresh]);
 
   useEffect(() => {
     if (!name) return;
