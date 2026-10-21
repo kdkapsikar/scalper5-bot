@@ -177,7 +177,8 @@ export default function Connect() {
       )}
       {tab === 'oanda' && (
         <div className="max-w-2xl">
-          <p className="mb-3 text-sm muted">Optional: gives <b>XAUUSD (OANDA)</b>, the same spot-gold prices as TradingView's OANDA:XAUUSD.
+          <p className="mb-3 text-sm muted">Optional. Everyone already gets <b>XAUUSD (spot)</b>, real-time spot gold from a public index that
+            tracks OANDA:XAUUSD within about $1-2. An OANDA token adds <b>XAUUSD (OANDA)</b>, OANDA's own prices.
             Any OANDA account works, including a free practice (demo) account. In OANDA's hub open <i>Manage API Access</i>,
             generate a personal access token, and pick the matching account type below. Prices are read only.</p>
           <KeyForm onSaved={refresh} submit="Save OANDA token" fields={[

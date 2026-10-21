@@ -7,7 +7,7 @@ from scalpbot.mood import Mood
 from scalpbot.scan import Result
 
 NAMES = ["NIFTY FUT", "BANKNIFTY FUT", "RELIANCE FUT", "HDFCBANK FUT", "SBIN FUT", "M&M FUT", "BTCUSDT", "ETHUSDT",
-         "PAXGUSDT", "XAUUSDT", "XAUUSD (OANDA)", "GOLD FUT", "GOLDM FUT", "SILVER FUT", "SILVERM FUT", "CRUDEOIL FUT",
+         "PAXGUSDT", "XAUUSDT", "XAUUSD (spot)", "XAUUSD (OANDA)", "GOLD FUT", "GOLDM FUT", "SILVER FUT", "SILVERM FUT", "CRUDEOIL FUT",
          "CRUDEOILM FUT", "NATURALGAS FUT", "NATGASMINI FUT", "COPPER FUT", "ZINC FUT", "ALUMINIUM FUT", "LEAD FUT"]
 
 
@@ -30,7 +30,8 @@ NAMES = ["NIFTY FUT", "BANKNIFTY FUT", "RELIANCE FUT", "HDFCBANK FUT", "SBIN FUT
     ("silver mini", ("ticker", "SILVERM FUT")),
     ("zinc", ("ticker", "ZINC FUT")),
     ("check copper", ("ticker", "COPPER FUT")),
-    ("how is xauusd", ("ticker", "XAUUSD (OANDA)")),
+    ("how is xauusd", ("ticker", "XAUUSD (spot)")),
+    ("spot gold", ("ticker", "XAUUSD (spot)")),
     ("xauusdt", ("ticker", "XAUUSDT")),
     ("m&m", ("ticker", "M&M FUT")),
     ("what is supertrend", ("explain", "supertrend")),

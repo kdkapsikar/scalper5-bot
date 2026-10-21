@@ -30,6 +30,9 @@ def _expiry_date(row: dict) -> dt.date:
     return pd.Timestamp(_to_ms(row["expiry"]), unit="ms", tz="UTC").tz_convert(IST).date()
 
 
+SPOT_GOLD = "XAUUSD (spot)"
+
+
 def fx_name(symbol: str) -> str:
     """OANDA's XAU_USD -> "XAUUSD (OANDA)", as TradingView names it OANDA:XAUUSD."""
     return symbol.upper().replace("_", "") + " (OANDA)"
@@ -136,6 +139,8 @@ def build_universe(path: str = "watchlist.yaml", today: dt.date | None = None,
         out += items
         out += [Instrument(name=s.upper(), source="coinswitch", symbol=s.upper(), group=GROUP_CRYPTO)
                 for s in conf["crypto"]]
+        if conf["spot_gold"]:
+            out.append(Instrument(name=SPOT_GOLD, source="spotindex", symbol="XAUUSDT", group=GROUP_FX))
         out += [Instrument(name=fx_name(s), source="oanda", symbol=s.upper(), group=GROUP_FX) for s in conf["oanda"]]
     out += load_watchlist(path)
     seen, unique = set(), []

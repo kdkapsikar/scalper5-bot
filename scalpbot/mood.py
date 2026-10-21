@@ -24,7 +24,7 @@ MARKETS = {
     "India": {"groups": ("Index futures", "Stock futures"), "leader": "NIFTY FUT"},
     "MCX": {"groups": ("MCX futures",), "leader": "GOLD FUT"},
     "Crypto": {"groups": ("Crypto",), "leader": "BTCUSDT"},
-    "Forex & metals": {"groups": ("Forex & metals",), "leader": "XAUUSD (OANDA)"},
+    "Forex & metals": {"groups": ("Forex & metals",), "leader": "XAUUSD (spot)"},
 }
 WEIGHTS = {"dema": 0.30, "supertrend": 0.20, "sma": 0.15, "leader": 0.20, "rsi": 0.10, "signals": 0.05}
 

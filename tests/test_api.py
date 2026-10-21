@@ -171,7 +171,8 @@ def _wait(client, headers, job):
 def test_universe_scan_and_ticker(client, ready):
     u = client.get("/api/universe", headers=ready).json()
     assert {"Index futures", "Stock futures", "MCX futures", "Crypto", "Forex & metals"} <= set(u["groups"])
-    assert len(u["instruments"]) == 10                      # the test data's MCX file only has GOLDM
+    assert len(u["instruments"]) == 11                      # the test data's MCX file only has GOLDM
+    assert "XAUUSD (spot)" in [i["name"] for i in u["instruments"]]
     assert "No MCX future found for: GOLD, SILVER" in " ".join(u["warnings"])
     job = client.post("/api/scan", json={"groups": ["Index futures", "Crypto"], "include_closed": True},
                       headers=ready).json()

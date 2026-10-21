@@ -424,3 +424,72 @@ def fetch_oanda(instrument: str, n: int = 1000, timeout: int = 20) -> pd.DataFra
     if not r.ok:
         raise RuntimeError(f"OANDA HTTP {r.status_code} for {instrument}: {r.text[:200]}")
     return _parse_oanda(r.json().get("candles") or [])
+
+
+# =========================================================================== spot gold without an account
+# Bybit and Binance publish an "index price" for their XAUUSDT perpetuals: a real-time spot-gold price in USD built
+# from outside spot quotes (the two agree to ~$1; the perpetual itself trades ~$2-3 above spot). It is public, so it
+# stands in for OANDA:XAUUSD for people who can't open an OANDA account. The index keeps printing through weekends and
+# the daily break, when spot gold doesn't trade, so candles outside OANDA's metals hours are dropped:
+# open Sunday 18:00 New York, close Friday 17:00 New York, daily break 17:00-18:00 New York.
+NY = "America/New_York"
+
+
+def in_metals_session(idx: pd.DatetimeIndex) -> "pd.Series":
+    ny = idx.tz_convert(NY)
+    minutes = ny.hour * 60 + ny.minute
+    wd = ny.weekday                                   # Monday = 0 ... Sunday = 6
+    daily_break = (minutes >= 17 * 60) & (minutes < 18 * 60)
+    weekend = (wd == 5) | ((wd == 4) & (minutes >= 17 * 60)) | ((wd == 6) & (minutes < 18 * 60))
+    return pd.Series(~(daily_break | weekend), index=idx)
+
+
+def _index_frame(rows: list) -> pd.DataFrame:
+    if not rows:
+        return _empty()
+    df = pd.DataFrame([r[:5] for r in rows], columns=["time", "open", "high", "low", "close"])
+    out = df[["open", "high", "low", "close"]].astype(float)
+    out["volume"] = 0.0                               # an index has no volume (the strategy doesn't use it)
+    out.index = pd.DatetimeIndex(pd.to_datetime(pd.to_numeric(df["time"]), unit="ms", utc=True))
+    return out.sort_index()
+
+
+def _bybit_index(pair: str, end_ms: int, limit: int) -> pd.DataFrame:
+    r = requests.get("https://api.bybit.com/v5/market/index-price-kline", timeout=10, params={
+        "category": "linear", "symbol": pair, "interval": "5", "end": end_ms, "limit": limit})
+    r.raise_for_status()
+    js = r.json()
+    if js.get("retCode") != 0:
+        raise RuntimeError(js.get("retMsg"))
+    return _index_frame(js["result"]["list"])
+
+
+def _binance_index(pair: str, end_ms: int, limit: int) -> pd.DataFrame:
+    r = requests.get("https://fapi.binance.com/fapi/v1/indexPriceKlines", timeout=10, params={
+        "pair": pair, "interval": "5m", "endTime": end_ms, "limit": min(limit, 1500)})
+    r.raise_for_status()
+    return _index_frame(r.json())
+
+
+def fetch_spot_index(pair: str = "XAUUSDT", n: int = 1000) -> pd.DataFrame:
+    """5-minute spot-gold candles from Bybit's index price (Binance's as a backup), metals trading hours only."""
+    errors = []
+    for name, page in (("Bybit", _bybit_index), ("Binance", _binance_index)):
+        try:
+            frames, end, got = [], int(time.time() * 1000), 0
+            for _ in range(12):                        # each page ~3.5 days; enough for a 5000-candle backtest
+                part = page(pair.upper(), end, 1000)
+                if part.empty:
+                    break
+                frames.append(part)
+                got += int(in_metals_session(part.index).sum())
+                if got >= n + 1:
+                    break
+                end = int(part.index[0].timestamp() * 1000) - 1
+            if not frames:
+                raise RuntimeError("no candles")
+            df = _merge(*frames)
+            return df[in_metals_session(df.index)].tail(n + 1)
+        except Exception as e:                         # try the backup
+            errors.append(f"{name}: {str(e)[:80]}")
+    raise RuntimeError("Spot gold index unavailable (" + "; ".join(errors) + ")")

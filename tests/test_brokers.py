@@ -500,3 +500,65 @@ def test_fetch_candles_routes_oanda_and_drops_the_forming_candle(monkeypatch):
     out = wl.fetch_candles(inst, 100)
     assert len(out) == 4 and out.index[-1] == idx[-2]                # the still-forming candle is not used
     assert wl.make_config(inst).tz == "Europe/Athens"
+
+
+# --------------------------------------------------------------------------- XAUUSD (spot) from the spot-gold index
+def test_metals_session_matches_oandas_hours():
+    from scalpbot.brokers import in_metals_session
+    ny = lambda s: pd.Timestamp(s, tz="America/New_York").tz_convert("UTC")
+    cases = {
+        "2026-10-20 12:00": True,    # Tuesday midday
+        "2026-10-20 16:55": True,    # last candle before the daily break
+        "2026-10-20 17:00": False,   # daily break 17:00-18:00
+        "2026-10-20 17:55": False,
+        "2026-10-20 18:00": True,    # reopens
+        "2026-10-23 16:55": True,    # Friday, last candle of the week
+        "2026-10-23 17:00": False,   # weekend starts
+        "2026-10-24 12:00": False,   # Saturday
+        "2026-10-25 17:55": False,   # Sunday before the open
+        "2026-10-25 18:00": True,    # Sunday open
+    }
+    idx = pd.DatetimeIndex([ny(k) for k in cases])
+    assert list(in_metals_session(idx)) == list(cases.values())
+
+
+def test_fetch_spot_index_pages_filters_and_falls_back(monkeypatch):
+    from scalpbot import brokers as b
+    end = pd.Timestamp("2026-10-21 10:00", tz="UTC")
+
+    def rows(last, k):                                       # newest-first like Bybit; [start ms, o, h, l, c]
+        return [[str(int((last - pd.Timedelta(minutes=5 * i)).timestamp() * 1000)), "4100", "4102", "4099", "4101"]
+                for i in range(k)]
+
+    calls = []
+
+    class R:
+        def __init__(self, js, ok=True): self._js, self.ok = js, ok
+        def json(self): return self._js
+        def raise_for_status(self):
+            if not self.ok: raise RuntimeError("HTTP 403")
+
+    def bybit_ok(url, params=None, timeout=None):
+        calls.append(params["end"])
+        last = pd.Timestamp(int(params["end"]), unit="ms", tz="UTC").floor("5min")
+        return R({"retCode": 0, "result": {"list": rows(last, params["limit"])}})
+
+    monkeypatch.setattr(b.time, "time", lambda: end.timestamp())
+    monkeypatch.setattr(b.requests, "get", bybit_ok)
+    df = b.fetch_spot_index("XAUUSDT", 1500)
+    assert len(calls) >= 2 and calls[1] < calls[0]          # paged back in time
+    assert len(df) == 1501 and df["volume"].eq(0).all()
+    assert b.in_metals_session(df.index).all()              # no weekend / daily-break candles left
+
+    def bybit_down_binance_ok(url, params=None, timeout=None):
+        if "bybit" in url:
+            return R({}, ok=False)
+        last = pd.Timestamp(int(params["endTime"]), unit="ms", tz="UTC").floor("5min")
+        return R([[int(r[0]), *r[1:]] for r in rows(last, params["limit"])])
+
+    monkeypatch.setattr(b.requests, "get", bybit_down_binance_ok)
+    assert len(b.fetch_spot_index("XAUUSDT", 200)) == 201
+
+    monkeypatch.setattr(b.requests, "get", lambda *a, **k: R({}, ok=False))
+    with pytest.raises(RuntimeError, match="Spot gold index unavailable"):
+        b.fetch_spot_index("XAUUSDT", 200)

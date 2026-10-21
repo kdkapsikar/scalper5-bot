@@ -94,7 +94,7 @@ export default function Landing() {
             ))}
           </div>
           <div className="eyebrow mb-3 mt-12">Covers</div>
-          <div className="flex flex-wrap gap-2">{['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50', '200+ F&O stock futures', 'MCX: gold, silver, crude, gas, base metals', 'BTCUSDT', 'ETHUSDT', 'PAXGUSDT', 'XAUUSDT', 'XAUUSD (OANDA)'].map((x) => (
+          <div className="flex flex-wrap gap-2">{['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'NIFTYNXT50', '200+ F&O stock futures', 'MCX: gold, silver, crude, gas, base metals', 'BTCUSDT', 'ETHUSDT', 'PAXGUSDT', 'XAUUSDT', 'XAUUSD (spot gold)'].map((x) => (
             <span key={x} className="card px-3 py-1.5 font-mono text-[.84rem]" style={{ boxShadow: 'none' }}>{x}</span>))}</div>
           <div className="card mt-14 p-10 text-center">
             <h2 className="mb-2 text-[clamp(1.6rem,3vw,2.1rem)] font-bold">Ready to read the tape?</h2>

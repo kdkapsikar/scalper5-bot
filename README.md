@@ -53,6 +53,7 @@ Defined in the `universe:` section of `watchlist.yaml`:
 | Index futures | Upstox | NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY, NIFTYNXT50 (nearest expiry) |
 | Stock futures | Upstox | every NSE F&O stock future (nearest expiry) |
 | Crypto | CoinSwitch PRO | BTCUSDT, ETHUSDT, PAXGUSDT, XAUUSDT futures |
+| Forex & metals | public index | **XAUUSD (spot)**: real-time spot gold from the Bybit index price (Binance as backup), no account needed. It tracks TradingView's OANDA:XAUUSD within about $1-2 (the XAUUSDT perpetual trades ~$2-3 above spot). Candles follow OANDA's metals hours: Sunday 18:00 to Friday 17:00 New York, with a daily 17:00-18:00 break. `spot_gold: false` turns it off |
 | Forex & metals | OANDA (optional) | `oanda: [XAU_USD]` = **XAUUSD (OANDA)**, the same spot-gold prices as TradingView's OANDA:XAUUSD. Add more OANDA instruments, e.g. `XAG_USD`, `EUR_USD`. Shown only to people who connected OANDA |
 | MCX futures | Upstox | GOLD, GOLDM, SILVER, SILVERM, CRUDEOIL, CRUDEOILM, NATURALGAS, NATGASMINI, COPPER, ZINC, ALUMINIUM, LEAD (nearest expiry; edit `mcx:` to change). Trades 09:00-23:30 IST (23:55 in Indian winter) |
 | Custom | any | hand-picked entries under `instruments:` |

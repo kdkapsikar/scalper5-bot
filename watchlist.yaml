@@ -6,6 +6,7 @@
 #                  downloaded once a day, so contracts roll to the next expiry on their own.
 #   crypto         CoinSwitch PRO futures symbols (BTC, ETH, PAXG, XAUUSDT). Run
 #                  `python -m scalpbot.check` once to confirm each symbol exists on CoinSwitch.
+#   spot_gold      XAUUSD (spot): spot gold from the Bybit/Binance index price, no account (true/false)
 #   oanda          OANDA forex & metals (needs an OANDA API token), e.g. [XAU_USD, XAG_USD, EUR_USD]
 #   mcx            optional MCX commodity futures by underlying, e.g. [GOLDM, SILVERM, CRUDEOIL]
 #   roll_days      move to next month's contract this many days before expiry (0 = nearest expiry)
@@ -21,6 +22,7 @@ universe:
   mcx: [GOLD, GOLDM, SILVER, SILVERM, CRUDEOIL, CRUDEOILM, NATURALGAS, NATGASMINI, COPPER, ZINC, ALUMINIUM, LEAD]
   crypto: [BTCUSDT, ETHUSDT, PAXGUSDT, XAUUSDT]
   oanda: [XAU_USD]
+  spot_gold: true
   roll_days: 0
   only: []
   exclude: []
