@@ -22,6 +22,7 @@ from typing import Optional
 
 MARKETS = {
     "India": {"groups": ("Index futures", "Stock futures"), "leader": "NIFTY FUT"},
+    "MCX": {"groups": ("MCX futures",), "leader": "GOLD FUT"},
     "Crypto": {"groups": ("Crypto",), "leader": "BTCUSDT"},
     "Forex & metals": {"groups": ("Forex & metals",), "leader": "XAUUSD (OANDA)"},
 }

@@ -7,7 +7,8 @@ from scalpbot.mood import Mood
 from scalpbot.scan import Result
 
 NAMES = ["NIFTY FUT", "BANKNIFTY FUT", "RELIANCE FUT", "HDFCBANK FUT", "SBIN FUT", "M&M FUT", "BTCUSDT", "ETHUSDT",
-         "PAXGUSDT", "XAUUSDT", "XAUUSD (OANDA)"]
+         "PAXGUSDT", "XAUUSDT", "XAUUSD (OANDA)", "GOLD FUT", "GOLDM FUT", "SILVER FUT", "SILVERM FUT", "CRUDEOIL FUT",
+         "CRUDEOILM FUT", "NATURALGAS FUT", "NATGASMINI FUT", "COPPER FUT", "ZINC FUT", "ALUMINIUM FUT", "LEAD FUT"]
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -20,6 +21,15 @@ NAMES = ["NIFTY FUT", "BANKNIFTY FUT", "RELIANCE FUT", "HDFCBANK FUT", "SBIN FUT
     ("tell me about eth", ("ticker", "ETHUSDT")),
     ("gold", ("ticker", "XAUUSDT")),
     ("oanda gold", ("ticker", "XAUUSD (OANDA)")),
+    ("mcx gold", ("ticker", "GOLD FUT")),
+    ("gold mini", ("ticker", "GOLDM FUT")),
+    ("how is crude", ("ticker", "CRUDEOIL FUT")),
+    ("crude mini", ("ticker", "CRUDEOILM FUT")),
+    ("natural gas", ("ticker", "NATURALGAS FUT")),
+    ("silver", ("ticker", "SILVER FUT")),
+    ("silver mini", ("ticker", "SILVERM FUT")),
+    ("zinc", ("ticker", "ZINC FUT")),
+    ("check copper", ("ticker", "COPPER FUT")),
     ("how is xauusd", ("ticker", "XAUUSD (OANDA)")),
     ("xauusdt", ("ticker", "XAUUSDT")),
     ("m&m", ("ticker", "M&M FUT")),

@@ -170,7 +170,9 @@ def _wait(client, headers, job):
 
 def test_universe_scan_and_ticker(client, ready):
     u = client.get("/api/universe", headers=ready).json()
-    assert {"Index futures", "Stock futures", "Crypto", "Forex & metals"} <= set(u["groups"]) and len(u["instruments"]) == 9
+    assert {"Index futures", "Stock futures", "MCX futures", "Crypto", "Forex & metals"} <= set(u["groups"])
+    assert len(u["instruments"]) == 10                      # the test data's MCX file only has GOLDM
+    assert "No MCX future found for: GOLD, SILVER" in " ".join(u["warnings"])
     job = client.post("/api/scan", json={"groups": ["Index futures", "Crypto"], "include_closed": True},
                       headers=ready).json()
     assert job["status"] in ("running", "done")
@@ -192,7 +194,7 @@ def test_universe_scan_and_ticker(client, ready):
 
 def test_mood_backtest_connections_and_assistant(client, ready):
     m = _wait(client, ready, client.post("/api/mood?scope=quick", headers=ready).json())
-    assert set(m["result"]["moods"]) == {"India", "Crypto", "Forex & metals"} and m["result"]["readings"]
+    assert set(m["result"]["moods"]) == {"India", "MCX", "Crypto", "Forex & metals"} and m["result"]["readings"]
     assert all(v["label"] for v in m["result"]["moods"].values())
     b = client.post("/api/backtest", json={"name": "NIFTY FUT"}, headers=ready).json()
     assert [r["mode"] for r in b["results"]] == ["off", "fast", "both"] and b["candles"] > 400

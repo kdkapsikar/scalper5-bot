@@ -54,7 +54,7 @@ Defined in the `universe:` section of `watchlist.yaml`:
 | Stock futures | Upstox | every NSE F&O stock future (nearest expiry) |
 | Crypto | CoinSwitch PRO | BTCUSDT, ETHUSDT, PAXGUSDT, XAUUSDT futures |
 | Forex & metals | OANDA (optional) | `oanda: [XAU_USD]` = **XAUUSD (OANDA)**, the same spot-gold prices as TradingView's OANDA:XAUUSD. Add more OANDA instruments, e.g. `XAG_USD`, `EUR_USD`. Shown only to people who connected OANDA |
-| MCX futures | Upstox | optional, e.g. `mcx: [GOLDM, SILVERM, CRUDEOIL]` (off by default) |
+| MCX futures | Upstox | GOLD, GOLDM, SILVER, SILVERM, CRUDEOIL, CRUDEOILM, NATURALGAS, NATGASMINI, COPPER, ZINC, ALUMINIUM, LEAD (nearest expiry; edit `mcx:` to change). Trades 09:00-23:30 IST (23:55 in Indian winter) |
 | Custom | any | hand-picked entries under `instruments:` |
 
 Upstox's instrument list is downloaded once a day, so futures roll to the next expiry on their own (set `roll_days` to switch a few days before expiry). Use `only:` / `exclude:` to trim the stock futures, for example `only: [RELIANCE, TCS, SBIN]`.
@@ -103,8 +103,8 @@ The API never uses keys from the server's `.env`; those are only for the command
 
 The pages load instantly from GitHub. On Render's free plan the API sleeps after ~15 idle minutes, so the first data
 request after a pause takes ~30-60 s (the app shows "Waking the server up…", and the home page starts waking it).
-[`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) pings it every 10 minutes on weekdays 08:30-16:30
-IST (about 180 of the free plan's 750 hours a month). Slow work (a full scan, the full-breadth mood, a connection
+[`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) pings it every 10 minutes on weekdays from 08:30 IST
+to about 00:30 IST, covering NSE and the MCX evening session (about 350 of the free plan's 750 hours a month). Slow work (a full scan, the full-breadth mood, a connection
 test) runs as a background job that the page polls, so the screen stays responsive.
 
 Security notes: sign-in returns an opaque token (only its sha256 is stored) kept in the browser and sent as

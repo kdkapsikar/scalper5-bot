@@ -89,6 +89,9 @@ def match_ticker(text: str, names: list[str]) -> Optional[str]:
     if not q:
         return None
     aliases = {"oanda": "XAUUSD (OANDA)", "xauusd": "XAUUSD (OANDA)", "spot gold": "XAUUSD (OANDA)",   # first: "oanda gold"
+               "mcx gold": "GOLD FUT", "gold mini": "GOLDM FUT", "mcx silver": "SILVER FUT", "silver mini": "SILVERM FUT",
+               "silver": "SILVER FUT", "crude oil": "CRUDEOIL FUT", "crude mini": "CRUDEOILM FUT", "crude": "CRUDEOIL FUT",
+               "natural gas": "NATURALGAS FUT", "natgas": "NATURALGAS FUT", "aluminum": "ALUMINIUM FUT",
                "btc": "BTCUSDT", "bitcoin": "BTCUSDT", "eth": "ETHUSDT", "ethereum": "ETHUSDT",
                "paxg": "PAXGUSDT", "gold": "XAUUSDT", "xau": "XAUUSDT", "xauusdt": "XAUUSDT", "nifty 50": "NIFTY FUT",
                "bank nifty": "BANKNIFTY FUT"}

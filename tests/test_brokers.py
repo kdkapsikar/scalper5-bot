@@ -189,7 +189,7 @@ def test_resolve_mcx_nearest_future_and_daily_cache(monkeypatch, tmp_path):
 def test_default_watchlist_is_valid():
     conf = load_universe_config("watchlist.yaml")
     assert conf["crypto"] == ["BTCUSDT", "ETHUSDT", "PAXGUSDT", "XAUUSDT"]
-    assert conf["index_futures"] and conf["stock_futures"] and conf["mcx"] == []
+    assert conf["index_futures"] and conf["stock_futures"] and conf["mcx"] == ["GOLD", "GOLDM", "SILVER", "SILVERM", "CRUDEOIL", "CRUDEOILM", "NATURALGAS", "NATGASMINI", "COPPER", "ZINC", "ALUMINIUM", "LEAD"]
     assert load_watchlist("watchlist.yaml") == []     # no hand-picked extras by default
 
 

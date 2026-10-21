@@ -1,13 +1,14 @@
 name: Keep the portal awake during market hours
 
 # Render's free plan puts the portal to sleep after ~15 idle minutes; waking it takes 30-60 s. This pings it every
-# 10 minutes on weekdays 08:30-16:30 IST (03:00-10:59 UTC), about 180 of the free plan's 750 hours a month.
+# 10 minutes on weekdays 08:30 IST to about 00:30 IST (03:00-18:59 UTC), covering NSE and the MCX evening session,
+# about 350 of the free plan's 750 hours a month (shared with any other free Render services).
 # GitHub may run scheduled jobs a few minutes late, and pauses schedules in repos with no activity for 60 days.
 # To ping a different address, set the Actions variable PORTAL_URL. To stop, disable this workflow in the Actions tab.
 
 on:
   schedule:
-    - cron: "*/10 3-10 * * 1-5"
+    - cron: "*/10 3-18 * * 1-5"
   workflow_dispatch:
 
 permissions: {}

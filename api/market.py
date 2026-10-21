@@ -17,15 +17,15 @@ from scalpbot.backtest import backtest, summarize
 from scalpbot.brokers import FILL_INFO, clear_instrument_cache
 from scalpbot.mood import WEIGHTS, all_moods
 from scalpbot.strategy import PIVOT_COLS
-from scalpbot.universe import GROUP_CRYPTO, GROUP_FX, GROUP_INDEX, GROUP_STOCK, GROUPS
+from scalpbot.universe import GROUP_CRYPTO, GROUP_FX, GROUP_INDEX, GROUP_MCX, GROUP_STOCK, GROUPS
 from scalpbot.watchlist import fetch_candles, make_config
 
 from . import jobs
 from .core import bucket, current_user, memo, universe, use_keys, user_creds
 
 router = APIRouter(prefix="/api")
-QUICK_GROUPS = (GROUP_INDEX, GROUP_CRYPTO, GROUP_FX)
-FULL_GROUPS = (GROUP_INDEX, GROUP_STOCK, GROUP_CRYPTO, GROUP_FX)
+QUICK_GROUPS = (GROUP_INDEX, GROUP_MCX, GROUP_CRYPTO, GROUP_FX)
+FULL_GROUPS = (GROUP_INDEX, GROUP_STOCK, GROUP_MCX, GROUP_CRYPTO, GROUP_FX)
 IST = "Asia/Kolkata"
 
 

@@ -240,9 +240,10 @@ def assistant(body: AskIn, user: User = Depends(current_user)):
             delayed = len(results) - closed
             why = " and ".join(x for x in ("Indian futures are closed" if closed else "",
                                             "the broker's crypto candles are running late" if delayed else "") if x)
+            why = why.replace("Indian futures are closed", "Indian markets (NSE / MCX) are closed")
             msgs = [A.Msg(A.BEAR, f"Nothing live to flag: {why}. 🐻")]
         else:
-            msgs = A.reply_signals(live, 3, "index futures, crypto and OANDA gold") + [
+            msgs = A.reply_signals(live, 3, "index futures, MCX, crypto and OANDA gold") + [
                 A.Msg(A.BULL, "For every F&O stock future, run **Scan all** on the Scanner page. 🐂")]
     elif kind == "ticker":
         if arg is None:

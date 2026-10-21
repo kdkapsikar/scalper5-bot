@@ -18,7 +18,7 @@
 universe:
   index_futures: true
   stock_futures: true
-  mcx: []
+  mcx: [GOLD, GOLDM, SILVER, SILVERM, CRUDEOIL, CRUDEOILM, NATURALGAS, NATGASMINI, COPPER, ZINC, ALUMINIUM, LEAD]
   crypto: [BTCUSDT, ETHUSDT, PAXGUSDT, XAUUSDT]
   oanda: [XAU_USD]
   roll_days: 0
