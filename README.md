@@ -1,6 +1,6 @@
 # scalp5-bot
 
-5-minute scalping signals for **Indian index and F&O stock futures** (via Upstox), **BTC, ETH, PAXG and XAUUSDT** futures (via CoinSwitch PRO) and **XAUUSD from OANDA** (optional), with a Bull / Bear market mood and the **Bull & Bear** assistant.
+5-minute scalping signals for **Indian index and F&O stock futures** (via Upstox), **BTC, ETH, PAXG and XAUUSDT** futures (via CoinSwitch PRO) and **XAUUSD spot gold**, with a Bull / Bear market mood and the **Bull & Bear** assistant.
 
 Built like wardwatch: a **React** web app on **GitHub Pages** ([`web/`](web/)), a **FastAPI** service on **Render**
 ([`api/`](api/)) and **Neon** Postgres. The trading engine is plain Python ([`scalpbot/`](scalpbot/)) and is shared by the
@@ -54,7 +54,6 @@ Defined in the `universe:` section of `watchlist.yaml`:
 | Stock futures | Upstox | every NSE F&O stock future (nearest expiry) |
 | Crypto | CoinSwitch PRO | BTCUSDT, ETHUSDT, PAXGUSDT, XAUUSDT futures |
 | Forex & metals | public index | **XAUUSD (spot)**: real-time spot gold from the Bybit index price (Binance as backup), no account needed. It tracks TradingView's OANDA:XAUUSD within about $1-2 (the XAUUSDT perpetual trades ~$2-3 above spot). Candles follow OANDA's metals hours: Sunday 18:00 to Friday 17:00 New York, with a daily 17:00-18:00 break. `spot_gold: false` turns it off |
-| Forex & metals | OANDA (optional) | `oanda: [XAU_USD]` = **XAUUSD (OANDA)**, the same spot-gold prices as TradingView's OANDA:XAUUSD. Add more OANDA instruments, e.g. `XAG_USD`, `EUR_USD`. Shown only to people who connected OANDA |
 | MCX futures | Upstox | GOLD, GOLDM, SILVER, SILVERM, CRUDEOIL, CRUDEOILM, NATURALGAS, NATGASMINI, COPPER, ZINC, ALUMINIUM, LEAD (nearest expiry; edit `mcx:` to change). Trades 09:00-23:30 IST (23:55 in Indian winter) |
 | Custom | any | hand-picked entries under `instruments:` |
 
@@ -80,9 +79,7 @@ Accounts, roles, sessions and encrypted keys live in `.state/portal.db`; the enc
    URI, then *Log in to Upstox*; you come back to the app and the token is saved to your account. Tokens expire daily:
    repeat each trading morning.
 2. **CoinSwitch:** save the API key and secret (no withdrawal rights if offered).
-3. **OANDA** (optional, for XAUUSD): in OANDA's hub open *Manage API Access*, generate a personal access token and save it
-   with the matching account type (a free **practice** account works for prices).
-4. **Test connections:** fetches real candles and shows what came back. Confirm `PAXGUSDT` and `XAUUSDT` are OK.
+3. **Test connections:** fetches real candles and shows what came back. Confirm `PAXGUSDT` and `XAUUSDT` are OK.
 
 The API never uses keys from the server's `.env`; those are only for the command-line tools.
 
@@ -196,7 +193,7 @@ Add `--dema-cross off|fast|both` to compare trigger modes. Entry is at the next 
 
 ## Notes and limits
 
-- Pivot "day" is Asia/Kolkata for Upstox, UTC for CoinSwitch and Europe/Athens for OANDA (its midnight is the forex day's 17:00 New York close, give or take an hour in the weeks between US and EU clock changes); override with `tz:` on a custom entry.
+- Pivot "day" is Asia/Kolkata for Upstox, UTC for CoinSwitch and Europe/Athens for spot gold (its midnight is the metals day's 17:00 New York close, give or take an hour in the weeks between US and EU clock changes); override with `tz:` on a custom entry.
 - Upstox rate limits: the adapter uses one global limiter (`UPSTOX_MAX_RPS`, default 5 per second), retries on HTTP 429, and caches each contract's history for the day so a cycle only re-fetches today's candles.
 - CoinSwitch klines are limited to 30 requests per 60 s; the adapter backfills once, then fetches only new candles.
 - CoinSwitch publishes 5-minute candles in batches, so its candle history runs about 7-37 minutes behind the live

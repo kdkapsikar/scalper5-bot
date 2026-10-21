@@ -186,19 +186,21 @@ export function TickerDetail({ name, rules, lookback }) {
 export default function Scanner() {
   const { universe, error } = useUniverse();
   const [mode, setMode] = useStored('scan.mode', 'all');
-  const [groups, setGroups] = useStored('scan.groups', null);
+  // Remember the groups you switched OFF, so groups added later (e.g. Forex & metals) show up by themselves.
+  const [hidden, setHidden] = useStored('scan.hiddenGroups', []);
   const [rules, setRules] = useStored('scan.rules', DEFAULT_RULES);
   const [lookback, setLookback] = useStored('scan.lookback', 3);
   const [includeClosed, setIncludeClosed] = useStored('scan.closed', false);
   const [ticker, setTicker] = useStored('scan.ticker', '');
   const allGroups = universe?.groups ?? [];
-  const active = groups ?? allGroups;
-  const names = useMemo(() => (universe?.instruments ?? []).filter((i) => active.includes(i.group)).map((i) => i.name), [universe, active]);
+  const active = allGroups.filter((g) => !hidden.includes(g));
+  // Single ticker lists every instrument; the Universe chips choose what "Scan all" scans.
+  const names = useMemo(() => (universe?.instruments ?? []).map((i) => i.name), [universe]);
 
   useEffect(() => { if (universe && (!ticker || !names.includes(ticker)) && names.length) setTicker(names[0]); }, [universe, names, ticker, setTicker]);
 
   const pick = (name) => { setTicker(name); setMode('one'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const toggle = (g) => setGroups(active.includes(g) ? active.filter((x) => x !== g) : [...active, g]);
+  const toggle = (g) => setHidden(hidden.includes(g) ? hidden.filter((x) => x !== g) : [...hidden, g]);
 
   return (
     <>
@@ -212,7 +214,7 @@ export default function Scanner() {
         <>
           <div className="card mb-5 grid gap-4 p-4 md:grid-cols-[1fr_1fr]">
             <div className="grid content-start gap-2">
-              <span className="text-sm font-medium">Universe</span>
+              <span className="text-sm font-medium">Universe <span className="font-normal faint">(what Scan all scans)</span></span>
               <div className="flex flex-wrap gap-1.5">{allGroups.map((g) => <button key={g} type="button" className="chip" aria-pressed={active.includes(g)} onClick={() => toggle(g)}>{g}</button>)}</div>
               <label className="mt-2 grid gap-1 text-sm font-medium">
                 <span>Look back: {lookback} closed candle{lookback > 1 ? 's' : ''}</span>
@@ -230,7 +232,7 @@ export default function Scanner() {
           ) : (
             <>
               <div className="mb-5 max-w-md">
-                <TickerPicker instruments={(universe?.instruments ?? []).filter((i) => active.includes(i.group))} value={ticker} onChange={setTicker} />
+                <TickerPicker instruments={universe?.instruments ?? []} value={ticker} onChange={setTicker} />
               </div>
               {names.includes(ticker) ? <TickerDetail name={ticker} rules={rules} lookback={lookback} />
                 : <Empty icon="🔎" title="Pick a ticker">Type a name from the list, e.g. NIFTY FUT, RELIANCE FUT or BTCUSDT.</Empty>}

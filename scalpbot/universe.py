@@ -33,11 +33,6 @@ def _expiry_date(row: dict) -> dt.date:
 SPOT_GOLD = "XAUUSD (spot)"
 
 
-def fx_name(symbol: str) -> str:
-    """OANDA's XAU_USD -> "XAUUSD (OANDA)", as TradingView names it OANDA:XAUUSD."""
-    return symbol.upper().replace("_", "") + " (OANDA)"
-
-
 def pick_futures(rows: list, today: dt.date, roll_days: int = 0) -> dict:
     """Nearest unexpired future per underlying. With roll_days, move to the next month when expiry is that close."""
     by: dict[str, list] = {}
@@ -141,7 +136,6 @@ def build_universe(path: str = "watchlist.yaml", today: dt.date | None = None,
                 for s in conf["crypto"]]
         if conf["spot_gold"]:
             out.append(Instrument(name=SPOT_GOLD, source="spotindex", symbol="XAUUSDT", group=GROUP_FX))
-        out += [Instrument(name=fx_name(s), source="oanda", symbol=s.upper(), group=GROUP_FX) for s in conf["oanda"]]
     out += load_watchlist(path)
     seen, unique = set(), []
     for i in out:

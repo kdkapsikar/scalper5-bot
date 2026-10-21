@@ -153,17 +153,16 @@ export default function Connect() {
   return (
     <>
       <PageHeader eyebrow="Setup · your broker accounts" title="Connect">
-        Connect <b>your own</b> Upstox and CoinSwitch accounts (and OANDA, optionally). Keys are encrypted before they are stored and only used for your own pages;
+        Connect <b>your own</b> Upstox and CoinSwitch accounts. Keys are encrypted before they are stored and only used for your own pages;
         they are never shown again. The portal operator holds the encryption key, so use keys that can't withdraw funds.
       </PageHeader>
       <Metrics>
         <Metric label="Upstox token" value={c.upstox.token ? 'Saved' : 'Missing'} tone={c.upstox.token ? 'bull' : 'bear'} />
         <Metric label="Token age" value={age === null ? '-' : `${age} h`} tone={age !== null && age > 20 ? 'warn' : undefined} />
         <Metric label="CoinSwitch keys" value={c.coinswitch ? 'Saved' : 'Missing'} tone={c.coinswitch ? 'bull' : 'bear'} />
-        <Metric label="OANDA token" value={c.oanda?.token ? `Saved (${c.oanda.env})` : 'Not set'} tone={c.oanda?.token ? 'bull' : undefined} />
       </Metrics>
       {age !== null && age > 20 && <Banner kind="warn">Your Upstox token is more than 20 hours old and has probably expired. Log in again below.</Banner>}
-      <div className="mb-5"><Segmented options={[['upstox', '1 · Upstox (India)'], ['coinswitch', '2 · CoinSwitch (crypto)'], ['oanda', '3 · OANDA (forex & metals)'], ['test', '4 · Test connections']]} value={tab} onChange={setTab} /></div>
+      <div className="mb-5"><Segmented options={[['upstox', '1 · Upstox (India)'], ['coinswitch', '2 · CoinSwitch (crypto)'], ['test', '3 · Test connections']]} value={tab} onChange={setTab} /></div>
       {tab === 'upstox' && <UpstoxTab me={me} refresh={refresh} />}
       {tab === 'coinswitch' && (
         <div className="max-w-2xl">
@@ -172,19 +171,6 @@ export default function Connect() {
           <KeyForm onSaved={refresh} submit="Save CoinSwitch keys" fields={[
             { name: 'COINSWITCH_API_KEY', label: 'API key', secret: true, saved: 'COINSWITCH_API_KEY' in c.saved },
             { name: 'COINSWITCH_SECRET_KEY', label: 'Secret key (hex)', secret: true, saved: 'COINSWITCH_SECRET_KEY' in c.saved },
-          ]} />
-        </div>
-      )}
-      {tab === 'oanda' && (
-        <div className="max-w-2xl">
-          <p className="mb-3 text-sm muted">Optional. Everyone already gets <b>XAUUSD (spot)</b>, real-time spot gold from a public index that
-            tracks OANDA:XAUUSD within about $1-2. An OANDA token adds <b>XAUUSD (OANDA)</b>, OANDA's own prices.
-            Any OANDA account works, including a free practice (demo) account. In OANDA's hub open <i>Manage API Access</i>,
-            generate a personal access token, and pick the matching account type below. Prices are read only.</p>
-          <KeyForm onSaved={refresh} submit="Save OANDA token" fields={[
-            { name: 'OANDA_API_TOKEN', label: 'Personal access token', secret: true, saved: 'OANDA_API_TOKEN' in c.saved },
-            { name: 'OANDA_ENV', label: 'Account type', initial: c.oanda?.env || 'practice',
-              options: [['practice', 'Practice (demo) account'], ['live', 'Live account']] },
           ]} />
         </div>
       )}

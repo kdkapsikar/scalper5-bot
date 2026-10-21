@@ -158,7 +158,7 @@ def test_upstox_login_round_trip(client, boss, monkeypatch):
 @pytest.fixture
 def ready(client, boss):
     client.put("/api/keys", json={"values": {"UPSTOX_ACCESS_TOKEN": "t", "COINSWITCH_API_KEY": "k",
-                                             "COINSWITCH_SECRET_KEY": "00", "OANDA_API_TOKEN": "o"}}, headers=boss)
+                                             "COINSWITCH_SECRET_KEY": "00"}}, headers=boss)
     return boss
 
 
@@ -171,7 +171,7 @@ def _wait(client, headers, job):
 def test_universe_scan_and_ticker(client, ready):
     u = client.get("/api/universe", headers=ready).json()
     assert {"Index futures", "Stock futures", "MCX futures", "Crypto", "Forex & metals"} <= set(u["groups"])
-    assert len(u["instruments"]) == 11                      # the test data's MCX file only has GOLDM
+    assert len(u["instruments"]) == 10                      # the test data's MCX file only has GOLDM
     assert "XAUUSD (spot)" in [i["name"] for i in u["instruments"]]
     assert "No MCX future found for: GOLD, SILVER" in " ".join(u["warnings"])
     job = client.post("/api/scan", json={"groups": ["Index futures", "Crypto"], "include_closed": True},
@@ -219,11 +219,7 @@ def test_api_home_forwards_to_the_web_app(client, monkeypatch):
     assert r.headers["location"] == "https://kdkapsikar.github.io/scalper5-bot/upstox/callback?code=AB&state=XY"
 
 
-def test_oanda_instruments_only_for_people_who_connected_oanda(client, boss):
-    names = lambda: [i["name"] for i in client.get("/api/universe", headers=boss).json()["instruments"]]
-    assert "XAUUSD (OANDA)" not in names() and "XAUUSDT" in names()
-    r = client.put("/api/keys", json={"values": {"OANDA_API_TOKEN": "tok", "OANDA_ENV": "live"}}, headers=boss)
-    assert r.json()["connections"]["oanda"] == {"token": True, "env": "live"}
-    assert "XAUUSD (OANDA)" in names()
-    a = client.post("/api/assistant", json={"text": "oanda gold"}, headers=boss).json()
-    assert a["kind"] == "ticker" and "XAUUSD (OANDA)" in a["messages"][0]["text"]
+
+def test_unknown_key_names_are_rejected(client, boss):
+    r = client.put("/api/keys", json={"values": {"OANDA_API_TOKEN": "x"}}, headers=boss)
+    assert r.status_code == 400 and "Unknown key names" in r.json()["error"]

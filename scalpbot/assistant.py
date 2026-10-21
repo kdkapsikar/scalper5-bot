@@ -88,7 +88,7 @@ def match_ticker(text: str, names: list[str]) -> Optional[str]:
     q = _norm(text)
     if not q:
         return None
-    aliases = {"oanda": "XAUUSD (OANDA)", "xauusd": "XAUUSD (spot)", "spot gold": "XAUUSD (spot)",   # first: "oanda gold"
+    aliases = {"xauusd": "XAUUSD (spot)", "spot gold": "XAUUSD (spot)", "oanda": "XAUUSD (spot)",   # before "gold"
                "spot": "XAUUSD (spot)",
                "mcx gold": "GOLD FUT", "gold mini": "GOLDM FUT", "mcx silver": "SILVER FUT", "silver mini": "SILVERM FUT",
                "silver": "SILVER FUT", "crude oil": "CRUDEOIL FUT", "crude mini": "CRUDEOILM FUT", "crude": "CRUDEOIL FUT",
@@ -267,7 +267,7 @@ def reply_ticker(res, lookback: int) -> list[Msg]:
     return out
 
 
-def reply_connections(up_token: bool, up_age_h: Optional[float], cs_ok: bool, oanda_ok: Optional[bool] = None) -> list[Msg]:
+def reply_connections(up_token: bool, up_age_h: Optional[float], cs_ok: bool) -> list[Msg]:
     lines = []
     if not up_token:
         lines.append("- **Upstox**: not logged in. Do today's login on the **Connect** page.")
@@ -276,9 +276,6 @@ def reply_connections(up_token: bool, up_age_h: Optional[float], cs_ok: bool, oa
     else:
         lines.append(f"- **Upstox**: connected" + (f" (token {up_age_h:.1f} h old)" if up_age_h is not None else "") + ".")
     lines.append("- **CoinSwitch**: " + ("keys saved." if cs_ok else "no keys yet. Add them on **Connect**."))
-    if oanda_ok is not None:
-        lines.append("- **OANDA**: " + ("token saved." if oanda_ok else
-                                        "not connected (optional, for XAUUSD (OANDA)). Add a token on **Connect**."))
     ok = up_token and (up_age_h is None or up_age_h <= 20) and cs_ok
     return [Msg(BULL if ok else BEAR, ("All set, both feeds are ready! 🐂\n\n" if ok else "Some setup left: 🐻\n\n")
                 + "\n".join(lines))]

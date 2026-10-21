@@ -78,7 +78,7 @@ export default function Mood() {
           <Button busy={!!prog} onClick={load}>↻ Refresh</Button></div>}>
         Is the tape bullish or bearish right now? A score from -100 (strong bear) to +100 (strong bull), from 200 DEMA, Supertrend
         and SMA 22/33 breadth, the leaders (NIFTY FUT, GOLD FUT, BTCUSDT, XAUUSD), median RSI and fresh signals. Quick reads index futures, MCX and
-        crypto (and OANDA gold if connected); Full adds every F&amp;O stock future (a minute or two). It describes the market; it is not a forecast or advice.
+        crypto and spot gold; Full adds every F&amp;O stock future (a minute or two). It describes the market; it is not a forecast or advice.
       </PageHeader>
       <ErrorText error={error} />
       {prog && <Progress done={prog.done} total={prog.total} label={scope === 'full' ? 'Reading every F&O future and crypto…' : 'Reading index futures and crypto…'} />}

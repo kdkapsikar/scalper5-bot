@@ -1,10 +1,9 @@
 """Candle adapters for Upstox (NSE/BSE stocks, indices, MCX commodities) and CoinSwitch PRO (crypto futures).
 
-Endpoints follow the brokers' public docs as read on 2026-10-16 (OANDA 2026-10-21):
+Endpoints follow the brokers' public docs as read on 2026-10-16:
   Upstox     GET /v3/historical-candle/{key}/minutes/5/{to}/{from}   (past days)
              GET /v3/historical-candle/intraday/{key}/minutes/5      (today, needs Bearer token)
   CoinSwitch GET /trade/api/v2/futures/klines  (Ed25519-signed, exchange=EXCHANGE_2, interval in minutes)
-  OANDA      GET /v3/instruments/{XAU_USD}/candles?granularity=M5&price=M   (Bearer API token; practice or live host)
 
 These have only been exercised against mocked responses so far. Run `python -m scalpbot.check`
 on your own machine with live keys before relying on them.
@@ -386,50 +385,10 @@ def fill_recent(symbol: str, df: pd.DataFrame, now_ms: int | None = None) -> pd.
     return df
 
 
-# =========================================================================== OANDA (forex & metals, e.g. XAU_USD)
-# The same prices as TradingView's OANDA:XAUUSD. Any OANDA account's personal API token works, including a free
-# practice (demo) account; practice and live accounts use different hosts.
-OANDA_HOSTS = {"practice": "https://api-fxpractice.oanda.com", "live": "https://api-fxtrade.oanda.com"}
-
-
-def _oanda_auth() -> tuple[str, str]:
-    c = creds.current()
-    token = c.OANDA_API_TOKEN if c is not None else os.getenv("OANDA_API_TOKEN", "")
-    env = (c.OANDA_ENV if c is not None else os.getenv("OANDA_ENV", "")) or "practice"
-    if not token:
-        raise AuthExpired("no OANDA API token (add it on the Connect page, or OANDA_API_TOKEN for the command line)")
-    return token, OANDA_HOSTS.get(env.strip().lower(), OANDA_HOSTS["practice"])
-
-
-def _parse_oanda(candles: list) -> pd.DataFrame:
-    rows = [(c["time"], *(float(c["mid"][k]) for k in ("o", "h", "l", "c")), float(c.get("volume", 0)))
-            for c in candles if c.get("mid")]
-    if not rows:
-        return _empty()
-    df = pd.DataFrame(rows, columns=["time"] + OHLCV)
-    out = df[OHLCV]
-    out.index = pd.DatetimeIndex(pd.to_datetime(df["time"], utc=True, format="ISO8601"))
-    return out.sort_index()
-
-
-def fetch_oanda(instrument: str, n: int = 1000, timeout: int = 20) -> pd.DataFrame:
-    """5-minute mid-price candles (the forming candle included; callers drop it)."""
-    token, host = _oanda_auth()
-    r = requests.get(f"{host}/v3/instruments/{quote(instrument.upper(), safe='')}/candles", timeout=timeout,
-                     headers={"Authorization": f"Bearer {token}", "Accept-Datetime-Format": "RFC3339"},
-                     params={"granularity": "M5", "price": "M", "count": min(max(n + 1, 2), 5000)})
-    if r.status_code in (401, 403):
-        raise AuthExpired(f"OANDA rejected the token (HTTP {r.status_code}). Check it, and whether it is a practice "
-                          "or a live account token.")
-    if not r.ok:
-        raise RuntimeError(f"OANDA HTTP {r.status_code} for {instrument}: {r.text[:200]}")
-    return _parse_oanda(r.json().get("candles") or [])
-
-
 # =========================================================================== spot gold without an account
 # Bybit and Binance publish an "index price" for their XAUUSDT perpetuals: a real-time spot-gold price in USD built
-# from outside spot quotes (the two agree to ~$1; the perpetual itself trades ~$2-3 above spot). It is public, so it
-# stands in for OANDA:XAUUSD for people who can't open an OANDA account. The index keeps printing through weekends and
+# from outside spot quotes (the two agree to ~$1; the perpetual itself trades ~$2-3 above spot). It is public and tracks
+# spot gold as charted on TradingView (e.g. OANDA:XAUUSD) within about $1-2. The index keeps printing through weekends and
 # the daily break, when spot gold doesn't trade, so candles outside OANDA's metals hours are dropped:
 # open Sunday 18:00 New York, close Friday 17:00 New York, daily break 17:00-18:00 New York.
 NY = "America/New_York"

@@ -62,7 +62,6 @@ export default function Layout() {
           </div>
           <div className="mt-2.5 flex flex-wrap gap-1.5 border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
             <Pill tone={up ? 'bull' : 'bear'}>Upstox</Pill><Pill tone={cs ? 'bull' : 'bear'}>CoinSwitch</Pill>
-            {connections?.oanda?.token && <Pill tone="bull">OANDA</Pill>}
           </div>
         </div>
         <button type="button" className="btn ghost small mt-2" onClick={async () => { await signOut(); nav('/signin'); }}>↩ Sign out</button>
