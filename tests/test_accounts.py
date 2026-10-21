@@ -228,3 +228,22 @@ def test_sessions_restore_expire_and_revoke(acc):
     acc.delete_user(boss, ann.id)
     assert acc.user_for_session(t5) is None
     assert acc.pending_count() == 0
+
+
+def test_ticker_view_explains_why_there_is_no_signal():
+    from scalpbot.mood import ticker_view
+    from scalpbot.scan import Check
+    from scalpbot.strategy import StrategyConfig
+    long_checks = [Check("Trigger on this candle", False, "no cross"), Check("Supertrend up", True),
+                   Check("Price above 200 DEMA", True), Check("RSI 35-62 and rising", False, "RSI 77.8"),
+                   Check("Room to next pivot", True)]
+    r = Result(name="XAUUSD (spot)", status="NONE", rsi=77.8, st_up=True, above_dema=True, sma_up=True,
+               checks={"LONG": long_checks, "SHORT": []})
+    v = ticker_view(r, StrategyConfig())
+    assert v["side"] == "bull" and v["label"] == "Strong Bull"
+    assert v["why"][0].startswith("Leaning long") and any("overbought" in w for w in v["why"])
+    assert any("No fresh trigger" in w for w in v["why"])
+    bear = ticker_view(Result(name="X", status="SHORT", rsi=40, st_up=False, above_dema=False, sma_up=False, trigger="SMA cross",
+                              age=1, checks={}), StrategyConfig())
+    assert bear["side"] == "bear" and bear["why"][0].startswith("A SHORT signal is live")
+    assert ticker_view(Result(name="X"), StrategyConfig())["score"] is None

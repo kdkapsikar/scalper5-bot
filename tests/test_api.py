@@ -184,6 +184,8 @@ def test_universe_scan_and_ticker(client, ready):
     t = client.post("/api/ticker", json={"name": "NIFTY FUT", "rules": {"require_rsi": False}}, headers=ready).json()
     assert t["status"] in ("LONG", "SHORT", "BLOCKED", "NONE") and t["headline"]
     assert set(t["checks"]) == {"LONG", "SHORT"} and len(t["checks"]["LONG"]) == 5
+    v = t["view"]
+    assert -100 <= v["score"] <= 100 and v["label"] and v["side"] in ("bull", "bear", "neutral") and v["facts"] and v["why"]
     assert len(t["chart"]["candles"]) == 150 and t["chart"]["dema"] and t["chart"]["pivots"]
     assert all(None not in (c["open"], c["high"], c["low"], c["close"]) for c in t["chart"]["candles"])
     times = [c["time"] for c in t["chart"]["candles"]]

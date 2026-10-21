@@ -118,6 +118,38 @@ function ScanAll({ universe, rules, lookback, includeClosed, groups, onPick }) {
   );
 }
 
+const VIEW_TONE = { bull: 'var(--bull)', bear: 'var(--bear)', neutral: 'var(--muted)', none: 'var(--faint)' };
+const VIEW_ANIMAL = { bull: '🐂', bear: '🐻', neutral: '⚖️', none: '❔' };
+
+/** Bull / Bear verdict for one ticker, and what stands between it and a signal. */
+function ViewCard({ view }) {
+  if (!view || view.score === null) return null;
+  return (
+    <div className="card mood mb-5" style={{ '--tone': VIEW_TONE[view.side] }}>
+      <div className="grid gap-5 md:grid-cols-[1fr_1.2fr]">
+        <div>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest muted">Bull / Bear view</div>
+              <div className="label mt-1">{view.label}</div>
+              <div className="display muted">Score <b style={{ color: 'var(--tone)' }}>{view.score > 0 ? '+' : ''}{Math.round(view.score)}</b> / 100</div>
+            </div>
+            <div className="animal">{VIEW_ANIMAL[view.side]}</div>
+          </div>
+          <div className="scorebar"><i style={{ left: `${(view.score + 100) / 2}%` }} /></div>
+          <div className="mb-3 flex justify-between text-[.72rem] faint"><span>Strong bear</span><span>Neutral</span><span>Strong bull</span></div>
+          <ul className="facts">{view.facts.map((f) => <li key={f}>{f}</li>)}</ul>
+        </div>
+        <div className="md:border-l md:pl-5" style={{ borderColor: 'var(--border)' }}>
+          <div className="mb-2 text-xs font-bold uppercase tracking-widest muted">Signal status</div>
+          <ul className="facts">{view.why.map((w, i) => <li key={w} style={i === 0 ? { fontWeight: 600 } : undefined}>{w}</li>)}</ul>
+          <p className="mt-2 text-xs faint">Reads the current 5-minute structure; it is not a forecast or advice.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Checklist({ title, checks }) {
   return (
     <div className="table-wrap">
@@ -174,6 +206,7 @@ export function TickerDetail({ name, rules, lookback, autoRefresh = 0 }) {
       {data.stale && <Banner kind="warn">{data.stale_text} Showing the latest data available.</Banner>}
       {data.filled && <p className="text-sm faint">⏱️ CoinSwitch's candle history was behind, so the latest {data.filled.candles} closed candle(s) came from {data.filled.provider[0].toUpperCase() + data.filled.provider.slice(1)}'s real-time feed (the same market).</p>}
       <Banner kind={tone}>{data.headline}{data.stop !== null && ['LONG', 'SHORT'].includes(data.status) && <> · Stop {fmt(data.stop)}{data.target !== null && <> · Target {fmt(data.target)}</>}</>}</Banner>
+      <ViewCard view={data.view} />
       <Metrics>
         <Metric label="Last price" value={fmt(data.price)} /><Metric label="RSI (14)" value={data.rsi?.toFixed(1) ?? '-'} />
         <Metric label="Supertrend" value={data.st_up ? 'Up' : 'Down'} tone={data.st_up ? 'bull' : 'bear'} />

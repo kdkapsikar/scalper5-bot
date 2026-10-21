@@ -15,7 +15,7 @@ from scalpbot import scan as sc
 from scalpbot.accounts import User
 from scalpbot.backtest import backtest, summarize
 from scalpbot.brokers import FILL_INFO, clear_instrument_cache
-from scalpbot.mood import WEIGHTS, all_moods
+from scalpbot.mood import WEIGHTS, all_moods, ticker_view
 from scalpbot.strategy import PIVOT_COLS
 from scalpbot.universe import GROUP_CRYPTO, GROUP_FX, GROUP_INDEX, GROUP_MCX, GROUP_STOCK, GROUPS
 from scalpbot.watchlist import fetch_candles, make_config
@@ -194,6 +194,7 @@ def ticker(body: TickerIn, user: User = Depends(current_user)):
     res, ind, cfg = sc.run_one(inst, body.rules.flags(), body.lookback, ignore_stale=True)
     out = result_json(res, with_checks=res.status != "ERROR")
     out["headline"] = sc.headline(res, body.lookback)
+    out["view"] = ticker_view(res, cfg) if cfg is not None else None
     out["chart"] = chart_json(ind) if ind is not None else None
     return out
 

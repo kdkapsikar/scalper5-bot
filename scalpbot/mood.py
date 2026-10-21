@@ -139,3 +139,66 @@ def all_moods(results: list) -> dict[str, Mood]:
     """One Mood per market that has instruments in the results (markets you don't watch are left out)."""
     return {k: market_mood(results, k) for k, spec in MARKETS.items()
             if any(r.group in spec["groups"] for r in results)}
+
+
+# --------------------------------------------------------------------------- one instrument's Bull / Bear view
+VIEW_WEIGHTS = {"dema": 0.35, "supertrend": 0.25, "sma": 0.20, "rsi": 0.10, "signal": 0.10}
+
+
+def ticker_view(res, cfg) -> dict:
+    """Bull / Bear verdict for one instrument (scalpbot.scan.Result), and what stands between it and a signal.
+
+    Score -100..+100 from: 200 DEMA side 35%, Supertrend 25%, SMA 22 vs 33 20%, RSI 10%, a signal in the look-back 10%.
+    It reads the current structure; it is not a forecast.
+    """
+    comp = {}
+    if res.above_dema is not None:
+        comp["dema"] = 1.0 if res.above_dema else -1.0
+    if res.st_up is not None:
+        comp["supertrend"] = 1.0 if res.st_up else -1.0
+    if res.sma_up is not None:
+        comp["sma"] = 1.0 if res.sma_up else -1.0
+    if res.rsi is not None:
+        comp["rsi"] = max(-1.0, min(1.0, (res.rsi - 50) / 20))
+    if res.status in ("LONG", "SHORT"):
+        comp["signal"] = 1.0 if res.status == "LONG" else -1.0
+    if not comp:
+        return {"score": None, "label": "No data", "side": "none", "facts": [], "why": []}
+    score = round(100 * sum(VIEW_WEIGHTS[k] * v for k, v in comp.items()) / sum(VIEW_WEIGHTS[k] for k in comp), 1)
+    label, icon = label_for(score)
+    side = "bull" if score >= 15 else "bear" if score <= -15 else "neutral"
+
+    facts = [f"{'Above' if res.above_dema else 'Below'} the 200 DEMA (the big-picture trend is {'up' if res.above_dema else 'down'}).",
+             f"Supertrend {'up' if res.st_up else 'down'}, SMA 22 {'above' if res.sma_up else 'below'} SMA 33."]
+    if res.rsi is not None:
+        tone = ("overbought" if res.rsi >= 70 else "strong" if res.rsi >= 55 else "oversold" if res.rsi <= 30
+                else "weak" if res.rsi <= 45 else "neutral")
+        facts.append(f"RSI {res.rsi:.1f} ({tone}).")
+
+    why = []
+    if res.status in ("LONG", "SHORT"):
+        why.append(f"A {res.status} signal is live ({res.trigger}, {res.age} candle(s) ago).")
+    else:
+        want = "LONG" if score >= 0 else "SHORT"           # the side the structure leans to
+        lo, hi = cfg.rsi_long if want == "LONG" else cfg.rsi_short
+        for c in res.checks.get(want, []):
+            if c.passed:
+                continue
+            if c.name.startswith("Trigger"):
+                why.append(f"No fresh trigger: a {want} needs SMA 22 to cross {'above' if want == 'LONG' else 'below'} "
+                           f"SMA 33, or the lines to cross {'up through' if want == 'LONG' else 'down through'} the 200 DEMA.")
+            elif c.name.startswith("RSI") and res.rsi is not None:
+                if res.rsi > hi:
+                    why.append(f"RSI {res.rsi:.1f} is above {hi:.0f}: {'overbought, so longs wait for a pullback' if want == 'LONG' else 'too strong for a short'} "
+                               f"into {lo:.0f}-{hi:.0f}.")
+                elif res.rsi < lo:
+                    why.append(f"RSI {res.rsi:.1f} is below {lo:.0f}: {'too weak for a long' if want == 'LONG' else 'oversold, so shorts wait for a bounce'} "
+                               f"into {lo:.0f}-{hi:.0f}.")
+                else:
+                    why.append(f"RSI {res.rsi:.1f} is in the {lo:.0f}-{hi:.0f} zone but must be {'rising' if want == 'LONG' else 'falling'}.")
+            else:
+                why.append(f"{c.name}: not yet ({c.detail}).")
+        if not why:
+            why.append(f"All {want} filters pass; it needs the trigger on a closed candle.")
+        why.insert(0, f"Leaning {want.lower()}, but no {want} signal yet because:")
+    return {"score": score, "label": label, "icon": icon, "side": side, "facts": facts, "why": why}
