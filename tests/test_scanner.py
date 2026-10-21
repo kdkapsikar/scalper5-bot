@@ -58,7 +58,7 @@ def test_build_universe_groups_cache_and_warnings(monkeypatch, tmp_path):
     y = tmp_path / "w.yaml"
     y.write_text("universe:\n  mcx: [GOLDM, NOPE]\ninstruments:\n  - {name: X, source: binance, symbol: BTCUSDT}\n")
     insts, warns = build_universe(str(y), today=TODAY, state_dir=str(tmp_path))
-    assert [i.name for i in insts] == ["BANKNIFTY FUT", "NIFTY FUT", "RELIANCE FUT", "TCS FUT", "GOLDM FUT", *CRYPTO, "X"]
+    assert [i.name for i in insts] == ["BANKNIFTY FUT", "NIFTY FUT", "RELIANCE FUT", "TCS FUT", "GOLDM FUT", *CRYPTO, "XAUUSD (OANDA)", "X"]
     groups = {i.name: i.group for i in insts}
     assert groups["NIFTY FUT"] == groups["BANKNIFTY FUT"] == "Index futures"
     assert groups["RELIANCE FUT"] == "Stock futures" and groups["GOLDM FUT"] == "MCX futures"
@@ -77,10 +77,12 @@ def test_build_universe_only_exclude_and_toggles(monkeypatch, tmp_path):
     y = tmp_path / "w.yaml"
     y.write_text("universe:\n  only: [RELIANCE]\n  exclude: [BANKNIFTY]\n  crypto: [BTCUSDT]\n")
     insts, _ = build_universe(str(y), today=TODAY, state_dir=str(tmp_path))
-    assert [i.name for i in insts] == ["NIFTY FUT", "RELIANCE FUT", "BTCUSDT"]
-    y.write_text("universe:\n  stock_futures: false\n  crypto: []\n")
+    assert [i.name for i in insts] == ["NIFTY FUT", "RELIANCE FUT", "BTCUSDT", "XAUUSD (OANDA)"]
+    y.write_text("universe:\n  stock_futures: false\n  crypto: []\n  oanda: [XAU_USD, EUR_USD]\n")
     insts, _ = build_universe(str(y), today=TODAY, state_dir=str(tmp_path))
-    assert [i.name for i in insts] == ["BANKNIFTY FUT", "NIFTY FUT"]
+    assert [i.name for i in insts] == ["BANKNIFTY FUT", "NIFTY FUT", "XAUUSD (OANDA)", "EURUSD (OANDA)"]
+    assert {i.group for i in insts if i.source == "oanda"} == {"Forex & metals"}
+    assert [i.symbol for i in insts if i.source == "oanda"] == ["XAU_USD", "EUR_USD"]
 
 
 def test_build_universe_survives_upstox_outage(monkeypatch, tmp_path):
@@ -91,7 +93,7 @@ def test_build_universe_survives_upstox_outage(monkeypatch, tmp_path):
     y = tmp_path / "w.yaml"
     y.write_text("universe: {}\n")
     insts, warns = build_universe(str(y), today=TODAY, state_dir=str(tmp_path))
-    assert [i.name for i in insts] == CRYPTO
+    assert [i.name for i in insts] == CRYPTO + ["XAUUSD (OANDA)"]
     assert warns and "Upstox" in warns[0]
 
 
@@ -205,7 +207,7 @@ def test_cli_scan_and_ticker(monkeypatch, tmp_path, capsys):
     y.write_text("universe:\n  crypto: [BTCUSDT]\n")
     assert sc.main(["--watchlist", str(y), "--no-dema", "--no-supertrend", "--no-rsi", "--no-room"]) == 0
     out = capsys.readouterr().out
-    assert "Scanned 5:" in out
+    assert "Scanned 6:" in out
     assert sc.main(["--watchlist", str(y), "--ticker", "BTCUSDT"]) == 0
     out = capsys.readouterr().out
     assert "LONG checklist" in out and "SHORT checklist" in out and "Pivot levels" in out

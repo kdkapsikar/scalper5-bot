@@ -5,7 +5,7 @@ import { Button, ErrorText, PageHeader, Pill, Progress, Segmented, useStored } f
 
 const COMPONENTS = {
   dema: '200 DEMA breadth', supertrend: 'Supertrend breadth', sma: 'SMA 22/33 breadth',
-  leader: 'Leader (NIFTY FUT / BTCUSDT)', rsi: 'Median RSI', signals: 'Fresh signals',
+  leader: 'Leader (NIFTY FUT / BTCUSDT / XAUUSD)', rsi: 'Median RSI', signals: 'Fresh signals',
 };
 const TONE = { bull: 'var(--bull)', bear: 'var(--bear)', neutral: 'var(--muted)', none: 'var(--faint)' };
 const ANIMAL = { bull: '🐂', bear: '🐻', neutral: '⚖️', none: '❔' };
@@ -77,14 +77,14 @@ export default function Mood() {
           <Segmented options={[['quick', 'Quick'], ['full', 'Full breadth']]} value={scope} onChange={setScope} />
           <Button busy={!!prog} onClick={load}>↻ Refresh</Button></div>}>
         Is the tape bullish or bearish right now? A score from -100 (strong bear) to +100 (strong bull), from 200 DEMA, Supertrend
-        and SMA 22/33 breadth, the leaders (NIFTY FUT, BTCUSDT), median RSI and fresh signals. Quick reads index futures and
-        crypto; Full adds every F&amp;O stock future (a minute or two). It describes the market; it is not a forecast or advice.
+        and SMA 22/33 breadth, the leaders (NIFTY FUT, BTCUSDT, XAUUSD), median RSI and fresh signals. Quick reads index futures and
+        crypto (and OANDA gold if connected); Full adds every F&amp;O stock future (a minute or two). It describes the market; it is not a forecast or advice.
       </PageHeader>
       <ErrorText error={error} />
       {prog && <Progress done={prog.done} total={prog.total} label={scope === 'full' ? 'Reading every F&O future and crypto…' : 'Reading index futures and crypto…'} />}
       {data && (
         <div className={prog ? 'opacity-60' : ''}>
-          <div className="grid gap-5 lg:grid-cols-2">{Object.entries(data.moods).map(([k, m]) => <MoodCard key={k} market={k} m={m} />)}</div>
+          <div className={`grid gap-5 lg:grid-cols-2 ${Object.keys(data.moods).length > 2 ? 'xl:grid-cols-3' : ''}`}>{Object.entries(data.moods).map(([k, m]) => <MoodCard key={k} market={k} m={m} />)}</div>
           <details className="fold mt-5"><summary>Per-instrument readings</summary>
             <div className="table-wrap"><table className="data">
               <thead><tr><th>Ticker</th><th>Group</th><th>Above 200 DEMA</th><th>Supertrend up</th><th>SMA 22 &gt; 33</th><th className="num">RSI</th><th>Signal</th><th>Note</th></tr></thead>

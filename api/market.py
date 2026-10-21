@@ -17,15 +17,15 @@ from scalpbot.backtest import backtest, summarize
 from scalpbot.brokers import FILL_INFO, clear_instrument_cache
 from scalpbot.mood import WEIGHTS, all_moods
 from scalpbot.strategy import PIVOT_COLS
-from scalpbot.universe import GROUP_CRYPTO, GROUP_INDEX, GROUP_STOCK, GROUPS
+from scalpbot.universe import GROUP_CRYPTO, GROUP_FX, GROUP_INDEX, GROUP_STOCK, GROUPS
 from scalpbot.watchlist import fetch_candles, make_config
 
 from . import jobs
-from .core import bucket, current_user, memo, universe, use_keys
+from .core import bucket, current_user, memo, universe, use_keys, user_creds
 
 router = APIRouter(prefix="/api")
-QUICK_GROUPS = (GROUP_INDEX, GROUP_CRYPTO)
-FULL_GROUPS = (GROUP_INDEX, GROUP_STOCK, GROUP_CRYPTO)
+QUICK_GROUPS = (GROUP_INDEX, GROUP_CRYPTO, GROUP_FX)
+FULL_GROUPS = (GROUP_INDEX, GROUP_STOCK, GROUP_CRYPTO, GROUP_FX)
 IST = "Asia/Kolkata"
 
 
@@ -113,8 +113,16 @@ def mood_json(m) -> dict:
     return d
 
 
-def _pick(names: list[str] | None, groups: list[str] | None):
+def _visible(insts, user: User | None):
+    """OANDA instruments only for people who connected OANDA (it's optional), so nobody else sees errors for them."""
+    if user is None or user_creds(user).OANDA_API_TOKEN:
+        return insts
+    return [i for i in insts if i.source != "oanda"]
+
+
+def _pick(names: list[str] | None, groups: list[str] | None, user: User | None = None):
     insts, warnings = universe()
+    insts = _visible(insts, user)
     if groups:
         insts = [i for i in insts if i.group in groups]
     if names:
@@ -134,6 +142,7 @@ def _by_name(name: str):
 @router.get("/universe")
 def get_universe(user: User = Depends(current_user)):
     insts, warnings = universe()
+    insts = _visible(insts, user)
     return {"groups": [g for g in GROUPS if any(i.group == g for i in insts)],
             "instruments": [{"name": i.name, "group": i.group, "source": i.source} for i in insts],
             "warnings": warnings}
@@ -162,7 +171,7 @@ def scan_summary(results: list[sc.Result]) -> dict:
 @router.post("/scan")
 def start_scan(body: ScanIn, user: User = Depends(current_user)):
     use_keys(user)
-    insts, _ = _pick(None, body.groups)
+    insts, _ = _pick(None, body.groups, user)
     if not insts:
         raise HTTPException(400, "Pick at least one group to scan.")
     flags = body.rules.flags()
@@ -200,7 +209,7 @@ def ticker(body: TickerIn, user: User = Depends(current_user)):
 
 def measure(user: User, groups: tuple) -> list[sc.Result]:
     """Default-rules scan of the groups, shared by Market mood and Bull & Bear, cached per user per candle."""
-    insts, _ = _pick(None, list(groups))
+    insts, _ = _pick(None, list(groups), user)
     return memo((user.id, "measure", groups, bucket()),
                 lambda: sc.scan(insts, {}, lookback=3, ignore_stale=True, workers=4))
 
@@ -257,6 +266,7 @@ def run_backtest(body: BacktestIn, user: User = Depends(current_user)):
 def test_connections(scope: str = "sample", user: User = Depends(current_user)):
     use_keys(user)
     insts, warnings = universe()
+    insts = _visible(insts, user)
     chosen = insts if scope == "all" else pt.sample_per_group(insts)
 
     def run(progress):

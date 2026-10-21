@@ -77,6 +77,7 @@ def _connections(user: User) -> dict:
         "upstox": {"token": bool(c.UPSTOX_ACCESS_TOKEN), "token_age_h": None if age is None else round(age, 1),
                    "app_saved": bool(c.UPSTOX_API_KEY and c.UPSTOX_API_SECRET), "redirect_uri": c.UPSTOX_REDIRECT_URI},
         "coinswitch": bool(c.COINSWITCH_API_KEY and c.COINSWITCH_SECRET_KEY),
+        "oanda": {"token": bool(c.OANDA_API_TOKEN), "env": c.OANDA_ENV or "practice"},
         "saved": {k: v.isoformat() for k, v in saved.items()},
     }
 
@@ -221,7 +222,7 @@ def assistant(body: AskIn, user: User = Depends(current_user)):
     from .market import QUICK_GROUPS, measure
 
     c = use_keys(user)
-    names = [i.name for i in universe()[0]]
+    names = [i.name for i in universe()[0] if i.source != "oanda" or c.OANDA_API_TOKEN]
     kind, arg = (body.kind, None) if body.kind else A.intent(body.text, names)
     mood = None
     if kind == "help":
@@ -241,7 +242,7 @@ def assistant(body: AskIn, user: User = Depends(current_user)):
                                             "the broker's crypto candles are running late" if delayed else "") if x)
             msgs = [A.Msg(A.BEAR, f"Nothing live to flag: {why}. 🐻")]
         else:
-            msgs = A.reply_signals(live, 3, "index futures and crypto") + [
+            msgs = A.reply_signals(live, 3, "index futures, crypto and OANDA gold") + [
                 A.Msg(A.BULL, "For every F&O stock future, run **Scan all** on the Scanner page. 🐂")]
     elif kind == "ticker":
         if arg is None:
@@ -253,7 +254,8 @@ def assistant(body: AskIn, user: User = Depends(current_user)):
         msgs = A.reply_explain(arg)
     elif kind == "connections":
         con = _connections(user)
-        msgs = A.reply_connections(con["upstox"]["token"], con["upstox"]["token_age_h"], con["coinswitch"])
+        msgs = A.reply_connections(con["upstox"]["token"], con["upstox"]["token_age_h"], con["coinswitch"],
+                                   con["oanda"]["token"])
     else:
         msgs = A.reply_unknown()
     return {"messages": [{"who": m.who, "text": m.text} for m in msgs], "mood": mood, "kind": kind}

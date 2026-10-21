@@ -10,7 +10,8 @@ import contextvars
 from dataclasses import dataclass, fields
 
 FIELDS = ["UPSTOX_API_KEY", "UPSTOX_API_SECRET", "UPSTOX_REDIRECT_URI", "UPSTOX_ACCESS_TOKEN",
-          "COINSWITCH_API_KEY", "COINSWITCH_SECRET_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
+          "COINSWITCH_API_KEY", "COINSWITCH_SECRET_KEY", "OANDA_API_TOKEN", "OANDA_ENV",
+          "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,8 @@ class Creds:
     UPSTOX_ACCESS_TOKEN: str = ""
     COINSWITCH_API_KEY: str = ""
     COINSWITCH_SECRET_KEY: str = ""
+    OANDA_API_TOKEN: str = ""
+    OANDA_ENV: str = ""                # "practice" (default) or "live"
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
 

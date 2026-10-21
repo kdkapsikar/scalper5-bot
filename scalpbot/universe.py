@@ -20,14 +20,19 @@ from .watchlist import Instrument, load_universe_config, load_watchlist
 log = logging.getLogger("scalpbot.universe")
 
 GROUP_INDEX, GROUP_STOCK, GROUP_MCX = "Index futures", "Stock futures", "MCX futures"
-GROUP_CRYPTO, GROUP_CUSTOM = "Crypto", "Custom"
-GROUPS = [GROUP_INDEX, GROUP_STOCK, GROUP_MCX, GROUP_CRYPTO, GROUP_CUSTOM]
+GROUP_CRYPTO, GROUP_FX, GROUP_CUSTOM = "Crypto", "Forex & metals", "Custom"
+GROUPS = [GROUP_INDEX, GROUP_STOCK, GROUP_MCX, GROUP_CRYPTO, GROUP_FX, GROUP_CUSTOM]
 INDEX_UNDERLYINGS = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "NIFTYNXT50"}
 _CACHE_KEYS = ("index_futures", "stock_futures", "mcx", "roll_days", "only", "exclude")
 
 
 def _expiry_date(row: dict) -> dt.date:
     return pd.Timestamp(_to_ms(row["expiry"]), unit="ms", tz="UTC").tz_convert(IST).date()
+
+
+def fx_name(symbol: str) -> str:
+    """OANDA's XAU_USD -> "XAUUSD (OANDA)", as TradingView names it OANDA:XAUUSD."""
+    return symbol.upper().replace("_", "") + " (OANDA)"
 
 
 def pick_futures(rows: list, today: dt.date, roll_days: int = 0) -> dict:
@@ -131,6 +136,7 @@ def build_universe(path: str = "watchlist.yaml", today: dt.date | None = None,
         out += items
         out += [Instrument(name=s.upper(), source="coinswitch", symbol=s.upper(), group=GROUP_CRYPTO)
                 for s in conf["crypto"]]
+        out += [Instrument(name=fx_name(s), source="oanda", symbol=s.upper(), group=GROUP_FX) for s in conf["oanda"]]
     out += load_watchlist(path)
     seen, unique = set(), []
     for i in out:

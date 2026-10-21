@@ -7,12 +7,15 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from .brokers import SEGMENT_FILE, fetch_coinswitch, fetch_upstox, resolve_upstox
+from .brokers import SEGMENT_FILE, fetch_coinswitch, fetch_oanda, fetch_upstox, resolve_upstox
 from .data import closed_only, fetch_binance, fetch_yfinance
 from .strategy import StrategyConfig
 
-SOURCES = {"upstox", "coinswitch", "binance", "yfinance"}
-DEFAULT_TZ = {"upstox": "Asia/Kolkata", "yfinance": "Asia/Kolkata", "coinswitch": "UTC", "binance": "UTC"}
+SOURCES = {"upstox", "coinswitch", "oanda", "binance", "yfinance"}
+# Pivot "day": IST for NSE, UTC for crypto. OANDA's trading day ends 17:00 New York; Europe/Athens midnight
+# (UTC+2/+3) is the usual forex stand-in for that (off by an hour in the weeks between US and EU clock changes).
+DEFAULT_TZ = {"upstox": "Asia/Kolkata", "yfinance": "Asia/Kolkata", "coinswitch": "UTC", "binance": "UTC",
+              "oanda": "Europe/Athens"}
 
 
 @dataclass
@@ -64,6 +67,7 @@ UNIVERSE_DEFAULTS = {
     "stock_futures": True,      # every NSE F&O stock (nearest expiry)
     "mcx": [],                  # MCX underlyings to add, e.g. [GOLDM, SILVERM, CRUDEOIL]
     "crypto": ["BTCUSDT", "ETHUSDT", "PAXGUSDT", "XAUUSDT"],   # CoinSwitch PRO futures symbols
+    "oanda": ["XAU_USD"],       # OANDA instruments (forex & metals), e.g. XAU_USD, XAG_USD, EUR_USD
     "roll_days": 0,             # switch to next month this many days before expiry (0 = nearest expiry)
     "only": [],                 # restrict stock futures to these underlyings (empty = all)
     "exclude": [],              # underlyings to skip
@@ -82,7 +86,7 @@ def load_universe_config(path: str) -> dict | None:
     if unknown:
         raise ValueError(f"{path}: unknown universe option(s) {sorted(unknown)}; allowed: {sorted(UNIVERSE_DEFAULTS)}")
     conf = {**UNIVERSE_DEFAULTS, **u}
-    for k in ("mcx", "crypto", "only", "exclude"):
+    for k in ("mcx", "crypto", "oanda", "only", "exclude"):
         conf[k] = [str(x).strip() for x in (conf[k] or []) if str(x).strip()]
     conf["roll_days"] = int(conf["roll_days"] or 0)
     conf["index_futures"], conf["stock_futures"] = bool(conf["index_futures"]), bool(conf["stock_futures"])
@@ -108,6 +112,8 @@ def fetch_candles(inst: Instrument, n: int = 1000) -> pd.DataFrame:
         df = fetch_upstox(resolve_upstox(inst))
     elif inst.source == "coinswitch":
         df = fetch_coinswitch(inst.symbol, n)
+    elif inst.source == "oanda":
+        df = fetch_oanda(inst.symbol, n)
     elif inst.source == "binance":
         df = fetch_binance(inst.symbol, "5m", n)
     else:

@@ -158,7 +158,7 @@ def test_upstox_login_round_trip(client, boss, monkeypatch):
 @pytest.fixture
 def ready(client, boss):
     client.put("/api/keys", json={"values": {"UPSTOX_ACCESS_TOKEN": "t", "COINSWITCH_API_KEY": "k",
-                                             "COINSWITCH_SECRET_KEY": "00"}}, headers=boss)
+                                             "COINSWITCH_SECRET_KEY": "00", "OANDA_API_TOKEN": "o"}}, headers=boss)
     return boss
 
 
@@ -170,7 +170,7 @@ def _wait(client, headers, job):
 
 def test_universe_scan_and_ticker(client, ready):
     u = client.get("/api/universe", headers=ready).json()
-    assert {"Index futures", "Stock futures", "Crypto"} <= set(u["groups"]) and len(u["instruments"]) == 8
+    assert {"Index futures", "Stock futures", "Crypto", "Forex & metals"} <= set(u["groups"]) and len(u["instruments"]) == 9
     job = client.post("/api/scan", json={"groups": ["Index futures", "Crypto"], "include_closed": True},
                       headers=ready).json()
     assert job["status"] in ("running", "done")
@@ -192,7 +192,7 @@ def test_universe_scan_and_ticker(client, ready):
 
 def test_mood_backtest_connections_and_assistant(client, ready):
     m = _wait(client, ready, client.post("/api/mood?scope=quick", headers=ready).json())
-    assert set(m["result"]["moods"]) == {"India", "Crypto"} and m["result"]["readings"]
+    assert set(m["result"]["moods"]) == {"India", "Crypto", "Forex & metals"} and m["result"]["readings"]
     assert all(v["label"] for v in m["result"]["moods"].values())
     b = client.post("/api/backtest", json={"name": "NIFTY FUT"}, headers=ready).json()
     assert [r["mode"] for r in b["results"]] == ["off", "fast", "both"] and b["candles"] > 400
@@ -214,3 +214,13 @@ def test_api_home_forwards_to_the_web_app(client, monkeypatch):
     assert r.status_code == 302 and r.headers["location"] == "https://kdkapsikar.github.io/scalper5-bot"
     r = client.get("/?code=AB&state=XY&evil=1", follow_redirects=False)
     assert r.headers["location"] == "https://kdkapsikar.github.io/scalper5-bot/upstox/callback?code=AB&state=XY"
+
+
+def test_oanda_instruments_only_for_people_who_connected_oanda(client, boss):
+    names = lambda: [i["name"] for i in client.get("/api/universe", headers=boss).json()["instruments"]]
+    assert "XAUUSD (OANDA)" not in names() and "XAUUSDT" in names()
+    r = client.put("/api/keys", json={"values": {"OANDA_API_TOKEN": "tok", "OANDA_ENV": "live"}}, headers=boss)
+    assert r.json()["connections"]["oanda"] == {"token": True, "env": "live"}
+    assert "XAUUSD (OANDA)" in names()
+    a = client.post("/api/assistant", json={"text": "oanda gold"}, headers=boss).json()
+    assert a["kind"] == "ticker" and "XAUUSD (OANDA)" in a["messages"][0]["text"]

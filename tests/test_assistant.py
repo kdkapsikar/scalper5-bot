@@ -7,7 +7,7 @@ from scalpbot.mood import Mood
 from scalpbot.scan import Result
 
 NAMES = ["NIFTY FUT", "BANKNIFTY FUT", "RELIANCE FUT", "HDFCBANK FUT", "SBIN FUT", "M&M FUT", "BTCUSDT", "ETHUSDT",
-         "PAXGUSDT", "XAUUSDT"]
+         "PAXGUSDT", "XAUUSDT", "XAUUSD (OANDA)"]
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -19,6 +19,9 @@ NAMES = ["NIFTY FUT", "BANKNIFTY FUT", "RELIANCE FUT", "HDFCBANK FUT", "SBIN FUT
     ("hdfc bank", ("ticker", "HDFCBANK FUT")),
     ("tell me about eth", ("ticker", "ETHUSDT")),
     ("gold", ("ticker", "XAUUSDT")),
+    ("oanda gold", ("ticker", "XAUUSD (OANDA)")),
+    ("how is xauusd", ("ticker", "XAUUSD (OANDA)")),
+    ("xauusdt", ("ticker", "XAUUSDT")),
     ("m&m", ("ticker", "M&M FUT")),
     ("what is supertrend", ("explain", "supertrend")),
     ("what are fees", ("explain", "fees")),
@@ -79,6 +82,8 @@ def test_reply_connections_and_explain():
     out = A.reply_connections(True, 30.0, False)[0]
     assert out.who == A.BEAR and "expired" in out.text and "no keys" in out.text
     assert "not logged in" in A.reply_connections(False, None, True)[0].text
+    assert "OANDA**: token saved" in A.reply_connections(True, 1.0, True, True)[0].text
+    assert "optional" in A.reply_connections(True, 1.0, True, False)[0].text
     assert "Supertrend" in A.reply_explain("supertrend")[0].text
     assert "Ask about" in A.reply_explain(None)[0].text
 

@@ -23,6 +23,7 @@ from typing import Optional
 MARKETS = {
     "India": {"groups": ("Index futures", "Stock futures"), "leader": "NIFTY FUT"},
     "Crypto": {"groups": ("Crypto",), "leader": "BTCUSDT"},
+    "Forex & metals": {"groups": ("Forex & metals",), "leader": "XAUUSD (OANDA)"},
 }
 WEIGHTS = {"dema": 0.30, "supertrend": 0.20, "sma": 0.15, "leader": 0.20, "rsi": 0.10, "signals": 0.05}
 
@@ -85,15 +86,18 @@ def market_mood(results: list, market: str) -> Mood:
     b, up, n = _breadth([r.above_dema for r in ok])
     if b is not None:
         comp["dema"] = b
-        m.facts.append(f"{_pct(up, n)} of {n} instruments close above their 200 DEMA.")
+        m.facts.append(f"{_pct(up, n)} of {n} instruments close above their 200 DEMA." if n != 1 else
+                       f"It closes {'above' if up else 'below'} its 200 DEMA.")
     b, up, n = _breadth([r.st_up for r in ok])
     if b is not None:
         comp["supertrend"] = b
-        m.facts.append(f"Supertrend points up on {_pct(up, n)} of them.")
+        m.facts.append(f"Supertrend points up on {_pct(up, n)} of them." if n != 1 else
+                       f"Supertrend points {'up' if up else 'down'}.")
     b, up, n = _breadth([r.sma_up for r in ok])
     if b is not None:
         comp["sma"] = b
-        m.facts.append(f"SMA 22 is above SMA 33 on {_pct(up, n)}.")
+        m.facts.append(f"SMA 22 is above SMA 33 on {_pct(up, n)}." if n != 1 else
+                       f"SMA 22 is {'above' if up else 'below'} SMA 33.")
 
     lead = next((r for r in ok if r.name == spec["leader"]), None)
     if lead is not None:
@@ -131,4 +135,6 @@ def market_mood(results: list, market: str) -> Mood:
 
 
 def all_moods(results: list) -> dict[str, Mood]:
-    return {k: market_mood(results, k) for k in MARKETS}
+    """One Mood per market that has instruments in the results (markets you don't watch are left out)."""
+    return {k: market_mood(results, k) for k, spec in MARKETS.items()
+            if any(r.group in spec["groups"] for r in results)}
