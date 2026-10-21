@@ -5,7 +5,6 @@ import Account from './pages/Account.jsx';
 import Admin from './pages/Admin.jsx';
 import Backtest from './pages/Backtest.jsx';
 import Connect from './pages/Connect.jsx';
-import Gold from './pages/Gold.jsx';
 import Landing from './pages/Landing.jsx';
 import Mood from './pages/Mood.jsx';
 import Scanner from './pages/Scanner.jsx';
@@ -33,7 +32,6 @@ export default function App() {
       <Route path="/app" element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="scanner" element={<Scanner />} />
-        <Route path="gold" element={<Gold />} />
         <Route path="mood" element={<Mood />} />
         <Route path="backtest" element={<Backtest />} />
         <Route path="connect" element={<Connect />} />

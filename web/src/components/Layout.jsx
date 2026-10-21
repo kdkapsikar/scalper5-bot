@@ -6,7 +6,7 @@ import Assistant from './Assistant.jsx';
 import { Pill } from './ui.jsx';
 
 const NAV = [
-  ['Trade', [['scanner', '📡', 'Scanner'], ['gold', '🥇', 'TradingView · XAUUSD'], ['mood', '🐂', 'Market mood'], ['backtest', '🧪', 'Backtest']]],
+  ['Trade', [['scanner', '📡', 'Scanner'], ['mood', '🐂', 'Market mood'], ['backtest', '🧪', 'Backtest']]],
   ['Setup', [['connect', '🔗', 'Connect'], ['account', '👤', 'My account']]],
 ];
 
